@@ -14,7 +14,7 @@ MODULE TPM_TRANS
 
 !
 USE PARKIND1  ,ONLY : JPIM,   JPRB
-
+USE TPM_DISTR ,ONLY : NPROC
 IMPLICIT NONE
 
 SAVE
@@ -54,5 +54,9 @@ INTEGER(KIND=JPIM) :: NPROMA  ! Blocking factor for gridpoint input/output
 INTEGER(KIND=JPIM) :: NGPBLKS ! Number of NPROMA blocks
 
 LOGICAL :: LGPNORM = .FALSE.  ! indicates whether transform is being done for gpnorm
+
+INTEGER(KIND=JPIM), ALLOCATABLE :: IREQ_RECV_gtol(:),KRECVTOT_gtol(:),IREQ_SEND_gtol(:),KSENDTOT_gtol(:)
+REAL(KIND=JPRB), ALLOCATABLE :: PCOMBUFR_gtol(:,:),PCOMBUFS_gtol(:,:)
+INTEGER(KIND=JPIM) :: KNRECV_gtol,KNSEND_gtol,TRGTOL_COUNT=0
 
 END MODULE TPM_TRANS
