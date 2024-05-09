@@ -35,7 +35,7 @@
 !  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-!#define SEND_BY_LEVEL
+#define SEND_BY_LEVEL
 !#define DEBUG
 !#define DEBUG_COMM
 
@@ -50,6 +50,7 @@ integer, allocatable :: sendtype(:,:)   ! MPI Datatype for sending
 integer, allocatable :: seg(:,:) ! beginning and ending element (for cases where there is padding)
 integer :: max_tot  ! Maximum total number of fields received
 integer :: tot_count ! Total number of received messages
+integer :: knrecv
 integer, allocatable :: rcount(:) ! Number of arrays per neighbor
 integer, allocatable :: start_blk(:) ! Beginning jblk when sending arrays
 integer, allocatable :: tot_recv(:,:) ! Number of elements per array per neighbor
@@ -218,7 +219,7 @@ IF (LHOOK) CALL DR_HOOK('TRGTOL',1,ZHOOK_HANDLE)
 END SUBROUTINE TRGTOL
 
 SUBROUTINE TRGTOL_PROLOG(KF_FS,KF_GP,KVSET,&
- & KSENDCOUNT,KRECVCOUNT,KNSEND,KNRECV,KSENDTOT,KRECVTOT,KSEND,KRECV,KINDEX,KNDOFF,KGPTRSEND)
+ & KSENDCOUNT,KRECVCOUNT,KNSEND,KSENDTOT,KRECVTOT,KSEND,KRECV,KINDEX,KNDOFF,KGPTRSEND)
 
 !**** *TRGTOL_PROLOG * - prolog for transposition of grid point data from column
 !                 structure to latitudinal. Reorganize data between
@@ -282,7 +283,7 @@ INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM), INTENT(OUT) :: KSENDCOUNT
 INTEGER(KIND=JPIM), INTENT(OUT) :: KRECVCOUNT
 INTEGER(KIND=JPIM), INTENT(OUT) :: KNSEND
-INTEGER(KIND=JPIM), INTENT(OUT) :: KNRECV
+!INTEGER(KIND=JPIM), INTENT(OUT) :: KNRECV
 INTEGER(KIND=JPIM), INTENT(OUT) :: KSENDTOT (NPROC)
 INTEGER(KIND=JPIM), INTENT(OUT) :: KRECVTOT (NPROC)
 INTEGER(KIND=JPIM), INTENT(OUT) :: KSEND    (NPROC)
@@ -380,7 +381,7 @@ END SUBROUTINE TRGTOL_PROLOG
 !---------------------------------------------------------
 !        D. Pekurovsky (NVIDIA Corp.), 19 OCtober 2023: Introduced MPI Datatypes. 
 !     ------------------------------------------------------------------
-subroutine trgtol_init(kvset,kgptrsend,kf_gp,kf_fs,knsend,knrecv,krecv,ksend,ksendtot,kptrgp,kf_scalars_g)
+subroutine trgtol_init(kvset,kgptrsend,kf_gp,kf_fs,knsend,krecv,ksend,ksendtot,kptrgp,kf_scalars_g)
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
@@ -883,7 +884,7 @@ deallocate(nflds)
 end subroutine trgtol_init
 
 
-SUBROUTINE TRGTOL_COMM(PGLAT,KF_FS,KF_GP,KVSET,&
+SUBROUTINE TRGTOL_SEND(KF_FS,KF_GP,KVSET,&
  & KNSEND,KNRECV,KSENDTOT,KSEND,KRECV,KINDEX,KNDOFF,KGPTRSEND,&
  & KPTRGP,iuvlev,iuvpar,igp3alev,igp3apar,igp2par,igp3blev,igp3bpar,igppar,PGP,PGPUV,PGP3A,PGP3B,PGP2)
 
@@ -968,7 +969,7 @@ IMPLICIT NONE
 
 INTEGER(KIND=JPIM) :: IUVPAR,IUVLEV,IGP2PAR,IGP3ALEV,IGP3APAR,IGP3BLEV,IGP3BPAR,IPAROFF,igppar
 INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
-REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
+!REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
 INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM), INTENT(IN) :: KNSEND
 INTEGER(KIND=JPIM), INTENT(IN) :: KNRECV
@@ -1306,48 +1307,44 @@ str = trim(s1) // s3
 open(11,file=str,form='formatted',status='unknown',action='write')
 #endif
 
-DO JNR=1,tot_count
-#ifdef DEBUG
-      write(11,12) myproc-1,jnr
-      call flush
-#endif
-12    format(i3,': Waitany loop, count ',i3)
-      call mpi_waitany(tot_count,recv_reqs,ind,MPI_STATUS_IGNORE,ierr)
-      call find_source(ind,inr,f,start_recv,knrecv)
-!      if(f .gt. kf_fs) then
-!         print *,myproc-1,': Beyong bounds, f=',f, 'ind=',ind,'inr=',inr
-!      endif
+
+DEALLOCATE(ZCOMBUFR)
+
+!==============================================
+
+!==============================================
+
+CALL GSTATS_BARRIER2(761)
+
+END SUBROUTINE TRGTOL_SEND
+
+SUBROUTINE TRGTOL_COMPLETE(PGLAT,NF,FBATCH,RECV_REQS,SEND_REQS,TOT_RECV_CNT,TOT_SEND_CNT)
+
+USE PARKIND1  ,ONLY : JPIM     ,JPRB
+USE TPM_DISTR       ,ONLY : D
+
+USE MPI
+
+IMPLICIT NONE
+  
+  INTEGER IERR,IND,INR,JNR,IRECV,TOT_RECV_CNT,TOT_SEND_cNT,NF,FBATCH,N0,S,F,II,I
+  REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,FBATCH)
+  
+  
+DO JNR=1,TOT_RECV_CNT
+
+   call mpi_waitany(TOT_RECV_CNT,recv_reqs,ind,MPI_STATUS_IGNORE,ierr)
+   call find_source(ind,inr,f,knrecv)
       
-!      call mpi_wait(recv_reqs(jnr),MPI_STATUS_IGNORE,ierr)
+   IRECV=KRECV(INR)    ! Source ID
 
-!      call find_source(jnr,inr,f,start_recv,knrecv)
-!
-!      ind = jnr
-!      f = mod(ind-1,rcount) +1   ! Group of fields
-!      inr = (ind-1)/rcount +1 
-
-      
-      IRECV=KRECV(INR)    ! Source ID
-
-#ifdef SEND_BY_LEVEL
-      n0 = 0
-      s = f
-#else      
-      iv = rc2iv(f,inr)
-      l = tot_recv(iv,inr)/num_fld(f,inr)
-      do ff=0,num_fld(f,inr)-1   ! Fields within the block
-!         n0 = ff*Dhor(inr) ! Offset 
-         n0 = ff*l  ! Offset 
-         s = fstart(f,inr)+ff
-#endif
-         do i=seg(1,inr),seg(2,inr)  ! Copy one segment (omitting cut elements)
-            ii = kindex(kndoff(irecv)+i-seg(1,inr)+1)
-            PGLAT(ii,s) = zcombufr(i+n0,ind)
-         enddo
-#ifndef SEND_BY_LEVEL
-      enddo
-#endif   
+   n0 = 0
+   s = f
+   do i=seg(1,inr),seg(2,inr)  ! Copy one segment (omitting cut elements)
+      ii = kindex(kndoff(irecv)+i-seg(1,inr)+1)
+      PGLAT(ii,s) = zcombufr(i+n0,ind)
    enddo
+enddo
 
 #ifdef DEBUG
    write (11,13) myproc-1
@@ -1358,7 +1355,6 @@ DO JNR=1,tot_count
 
    call mpi_waitall(tot_req_id,send_reqs,MPI_STATUSES_IGNORE,ierr)
    
-
 #ifdef DEBUG_COMM
 s1 = 'pglat.'
 write(s2,9) myproc-1
@@ -1378,9 +1374,9 @@ enddo
 close(11)
 #endif
       
-!IF (NTRANS_SYNC_LEVEL >= 1) THEN
+IF (NTRANS_SYNC_LEVEL >= 1) THEN
    CALL MPL_BARRIER(CDSTRING='TRGTOL_COMM: BARRIER AT END')
-!ENDIF
+ENDIF
 
 IF(.NOT.LGPNORM)THEN
   CALL GSTATS(803,1)
@@ -1388,45 +1384,18 @@ ELSE
   CALL GSTATS(804,1)
 ENDIF
 
-DEALLOCATE(ZCOMBUFR)
+END SUBROUTINE TRGTOL_COMPLETE
 
-!==============================================
 
-!==============================================
 
-CALL GSTATS_BARRIER2(761)
-
-END SUBROUTINE TRGTOL_COMM
-
-subroutine find_source(ind,src,f,ref,n)
+subroutine find_source(ind,src,f,n)
   implicit none
-  integer, intent(in) :: ind,n,ref(n)
+  integer, intent(in) :: ind,n
   integer, intent(out) :: src,f
-  integer low,high,mid
-  logical conv
   
-  ! Do binary search
-  low = 1
-  high = n
-  conv = .false.
-  do while(low < high .and. .not. conv)
-     mid = (low + high + 1)/2
-     
-     if(ref(mid) <= ind) then
-        low = mid
-        if(ref(mid) .eq. ind) then
-           conv = .true.
-        endif
-     else if(ref(mid) > ind) then
-        high = mid - 1
-     else
-        conv = .true.
-     endif
-     
-  enddo
-  src = low
-  f = ind - ref(src) +1
-  
+  src = mod(ind,n)
+  f = ind/n+1
+
 end subroutine find_source
 
 END MODULE TRGTOL_MOD
