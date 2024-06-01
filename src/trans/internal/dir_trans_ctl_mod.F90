@@ -9,8 +9,194 @@
 !
 
 MODULE DIR_TRANS_CTL_MOD
+
+USE LINKED_LIST_M
+
+INTEGER :: NBATCHES ! NUMBER OF BATCHES
+integer :: batch_sz ! BATCH SIZE IN LEVELS
+integer, parameter :: MAX_ACTIVE = 3 ! MAXIMUM NUMBER OF ACTIVE BATCHES
+integer :: ncomm_started=1 ! NUMBER OF OUTSTANDING COMMUNICATIONS
+TYPE(LINKED_LIST) :: ACTIVE_BATCHES ! LIST OF ACTIVES BATCHES
+TYPE(LINKED_LIST) :: ACTIVE_COMMS   ! LIST OF OUTSTANDING COMMUNICATIONS
+INTEGER, PARAMETER :: WAITING = 1
+INTEGER, PARAMETER :: READY = 2
+INTEGER, PARAMETER :: PENDING=3
+INTEGER, PARAMETER :: MAX_COMMS = 4  ! MAXIMUM NUMBER OF OUTSTANDING COMMUNICATIONS
+INTEGER :: NLEV=8 ! NUMBER OF VERTICAL LEVELS FOR THIS TASK
+INTEGER :: MAXVAR=4 ! MAXIMUM NUMBER OF VARIABLES (ALLOWS FOR SURFACE VARIABLES AT LEVEL 1)
+INTEGER, ALLOCATABLE :: NVAR(:) ! NUMBER OF VARIABLES FOR EACH BATCH (ALLOWS FOR SURFACE VARIABLES AT LEVEL 1)
+
+type AB
+   integer :: stage,status,id
+!   TYPE(TCOMM), POINTER :: comm_dep
+     class(*), pointer               :: comm_dep
+  end type AB
+
+TYPE SR  ! send/receive structure
+   INTEGER, ALLOCATABLE :: RECV_REQS(:,:),SEND_REQS(:,:)
+   REAL(JPRB), ALLOCATABLE :: RECVBUF(:,:)
+   LOGICAL INUSE=.FALSE.
+   
+   SUBROUTINE INIT
+     IF(.NOT. ALLOCATED (RECV_REQS)) THEN
+        ALLOCATE(RECV_REQS(MAX_RECV_NEIGHBORS,MAXVAR))
+     ENDIF
+     IF(.NOT. ALLOCATED (SEND_REQS)) THEN
+        ALLOCATE(SEND_REQS(MAX_SEND_NEIGHBORS,MAXVAR))
+     ENDIF
+     if(.NOT. ALLOCATED (RECVBUF)) THEN
+        ALLOCATE(RECVBUF(MAX_TOT,MAXVAR))
+     ENDIF
+   END SUBROUTINE INIT
+
+   SUBROUTINE DELETE
+     DEALLOCATE(RECV_REQS,SEND_REQS)
+   END SUBROUTINE DELETE
+END TYPE SR
+
+TYPE(SR), ALLOCATABLE :: REQS ! ARRAY OF SEND/RECV REQUEST GROUPS, ONE GROUP PER LEVEL
+
+type TCOMM
+   INTEGER, POINTER :: RECV_REQS,SEND_REQS
+   INTEGER :: nNEIGHBORS,STATUS,NCOMM
+   TYPE(AB), POINTER :: MYBATCH
+   REAL(JPRB), POINTER :: RECVBUF
+   
+   SUBROUTINE INIT
+     INTEGER I
+     
+     DO I=1,MAX_COMMS
+        IF(.NOT. REQS(I)%INUSE) THEN
+           REQS(I)%INUSE = .TRUE.
+           RECV_REQS => REQS(I)%RECV_REQS
+           SEND_REQS => REQS(I)%SEND_REQS
+           RECVBUF => REQS(I)%RECVBUF
+           EXIT
+        ENDIF
+     ENDDO
+
+     NCOMM = I
+     IF(NCOMM .GT. MAX_COMMS) THEN
+        PRINT *,'ERROR IN TCOMM INIT: EXCEEDED MAX_COMMS'
+     ENDIF
+     
+   END SUBROUTINE INIT
+
+   SUBROUTINE TEST_COMM(FLAG)
+
+    IMPLICIT NONE
+
+    LOGICAL, INTENT(OUT) :: FLAG
+
+    CALL MPI_TESTALL(nNEIGHBORS*NVAR(MYBATCH%ID),RECV_REQS,FLAG,MPI_STATUSES_IGNORE)
+    
+  END SUBROUTINE TEST_COMM
+
+  SUBROUTINE complete_comm(batch)   ! Complete the communication call, release requests
+
+    IMPLICIT NONE
+    TYPE(AB), INTENT(OUT), POINTER :: BATCH
+    INTEGER IBATCH
+    
+    CALL MPI_WAITALL(nNEIGHBORS*NVAR(MYBATCH%ID),RECV_REQS,MPI_STATUSES_IGNORE)
+    CALL MPI_WAITALL(nNEIGHBORS*NVAR(MYBATCH%ID),SEND_REQS,MPI_STATUSES_IGNORE)
+    BATCH => MYBATCH
+
+    REQS(NCOMM)%INUSE = .FALSE.
+    CALL PROCESS_BUF(MYBATCH%STAGE,MYBATCH%ID,RECVBUF,NVAR(MYBATCH%ID))
+    
+  END SUBROUTINE complete_comm
+end type TCOMM
+
+
 CONTAINS
-SUBROUTINE DIR_TRANS_CTL(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS,KF_UV,KF_SCALARS,&
+
+SUBROUTINE PROCESS_BUF(STAGE,BATCHID,RECVBUF,NVARS)
+
+END SUBROUTINE PROCESS_BUF
+
+
+
+! Append a new batch to the end of the linked list of active batches
+  ! Initiate first transpose (trgtol)
+  SUBROUTINE ACTIVATE(N)
+
+    USE LINKED_LIST_M
+
+    IMPLICIT NONE
+
+    INTEGER, INTENT(INOUT) :: N
+
+    TYPE(ab), POINTER :: NEWBATCH
+    TYPE(TCOMM), POINTER :: NEWCOMM
+    
+    ALLOCATE(NEWBATCH)
+    NEWBATCH%STAGE = 1
+    NEWBATCH%STATUS = WAITING
+    NEWBATCH%ID = N
+    
+    ALLOCATE(NEWCOMM)
+    NEWCOMM%NNEIGHBORS = NEI1
+    NEWCOMM%BATCH => NEWBATCH
+    CALL NEWCOMM%INIT
+    CALL ACTIVE_COMMS%APPEND(NEWCOMM)
+    NEWBATCH%COMM_DEP => NEWCOMM
+    
+    CALL TRGTOL(BATCH=N,comm=NEWCOMM,NEWCOMM%RECVBUF)
+    IF(NCOMM_STARTED .LT. MAX_COMMS) THEN
+       ncomm_started = ncomm_started+1
+       CALL NEWCOMM%START
+       NEWBATCH%STATUS = WAITING
+    ELSE
+       NEWBATCH%STATUS = PENDING
+    ENDIF
+
+    CALL ACTIVE_BATCHES%APPEND(NEWBATCH)
+
+  END SUBROUTINE ACTIVATE
+
+     subroutine execute(BATCH)
+
+       USE LINKED_LIST_M
+
+       IMPLICIT NONE
+
+       TYPE(AB), TARGET(INOUT) :: BATCH
+       TYPE(TCOMM), POINTER :: COMM
+       
+       IF(BATCH%STATUS .NE. READY) THEN
+          PRINT *,'ERROR IN EXECUTE: THIS BATCHIS NOT READY'
+       ENDIF
+
+       IF(BATCH%COMM_DEP .NE. NULL) THEN
+          PRINT *,'EXECUTE FROM BATCH ',ID',: COMMUNICATION DEPENDENCY NOT MET'
+       ENDIF
+
+       IF(BATCH%STAGE .EQ. 1) THEN ! DO FFT
+
+          CALL FTDIR(BATCH%ID,)
+          CALL FOURIER_OUT(BATCH%ID)
+          
+          ALLOCATE(COMM)
+          COMM%NNEIGHBORS = 1  ! BECAUSE IT IS ONE ALLTOALLV
+          COMM%BATCH => BATCH
+          CALL COMM%INIT
+          CALL ACTIVE_COMMS%APPEND(COMM)
+          BATCH%COMM_DEP => COMM
+          CALL COMM_START_ATAV(COMM,BATCH)
+          
+       ELSEIF(STAGE .EQ. 2) THEN ! dO LEGENDRE
+
+          CALL LTDIR(BATCH%ID)
+          
+       ENDIF
+
+       STAGE = STAGE+1
+
+
+     end subroutine execute
+
+  SUBROUTINE DIR_TRANS_CTL(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS,KF_UV,KF_SCALARS,&
  & PSPVOR,PSPDIV,PSPSCALAR,KVSETUV,KVSETSC,PGP,&
  & PSPSC3A,PSPSC3B,PSPSC2,KVSETSC3A,KVSETSC3B,KVSETSC2,PGPUV,PGP3A,PGP3B,PGP2)
 
@@ -82,6 +268,8 @@ USE SHUFFLE_MOD     ,ONLY : SHUFFLE
 USE FIELD_SPLIT_MOD ,ONLY : FIELD_SPLIT
 USE LTDIR_CTL_MOD   ,ONLY : LTDIR_CTL
 USE FTDIR_CTL_MOD   ,ONLY : FTDIR_CTL
+
+USE LINKED_LIST_M
 !
 
 IMPLICIT NONE
@@ -120,76 +308,110 @@ INTEGER(KIND=JPIM) :: IBLKS,JBLK,ISTUV_G,IENUV_G
 INTEGER(KIND=JPIM) :: IF_UV_G,IF_UV,ISTUV,IF_SCALARS,IF_SCALARS_G,IF_FS,IF_GP
 INTEGER(KIND=JPIM) :: JFLD,ISTSC_G,IENSC_G,ISTSC,IENSC,IENUV,IF_GPB
 
+logical :: alldone,productive,flg,comm_compl
+integer :: nactive,i,stage,status,c,NBATCHES,MAX_NEIGHBORS,NDONE
+type(ab), pointer :: batch,IB
+type(tcomm), pointer :: ic
 
 !     ------------------------------------------------------------------
 
 ! Perform transform
 
 IF_GPB = 2*KF_UV_G+KF_SCALARS_G
-IF(NPROMATR > 0 .AND. IF_GPB > NPROMATR) THEN
 
-  ! Fields to be split into packets
+BATCH_SZ = 1
+NLEV = 
+NBATCHES = NLEV/BATCH_SZ
+MAX_NEIGHBORS =
 
-  CALL SHUFFLE(KF_UV_G,KF_SCALARS_G,ISHFUV_G,IVSETUV,ISHFSC_G,IVSETSC,&
- & KVSETUV,KVSETSC)
+ALLOCATE(NVAR(NBATCHES))
+MAXVAR = 1
+DO I=1,NBATCHES
+   NVAR(I) =
+   IF(MAXVAR .LT. NVAR(I)) THEN
+      MAXVAR = NVAR(I)
+   ENDIF
+ENDDO
 
-  IBLKS=(IF_GPB-1)/NPROMATR+1
+ALLOCATE(REQS(MAX_COMMS)
+DO I=1,MAX_COMMS
+   CALL REQS(I)%INIT
+ENDDO
 
-  DO JBLK=1,IBLKS
-  
-    CALL FIELD_SPLIT(JBLK,KF_GP,KF_UV_G,IVSETUV,IVSETSC,&
-     & ISTUV_G,IENUV_G,IF_UV_G,ISTSC_G,IENSC_G,IF_SCALARS_G,&
-     & ISTUV,IENUV,IF_UV,ISTSC,IENSC,IF_SCALARS)
+alldone = .false.
+ncomm_started = 0
+nactive = 1
+NDONE = 0
+call activate(1)   ! Start the first batch, post communication
+!active_batches(1)%stage = 1
 
-    IF_FS = 2*IF_UV + IF_SCALARS
-    IF_GP = 2*IF_UV_G+IF_SCALARS_G
-    DO JFLD=1,IF_UV_G
-      IPTRGP(JFLD) = ISHFUV_G(ISTUV_G+JFLD-1)
-      IPTRGP(JFLD+IF_UV_G) = KF_UV_G+ISHFUV_G(ISTUV_G+JFLD-1)
-    ENDDO
-    DO JFLD=1,IF_SCALARS_G
-      IPTRGP(JFLD+2*IF_UV_G) = 2*KF_UV_G+ISHFSC_G(ISTSC_G+JFLD-1)
-    ENDDO
-    DO JFLD=1,IF_UV
-      IPTRSPUV(JFLD) = ISTUV+JFLD-1
-    ENDDO
-    DO JFLD=1,IF_SCALARS
-      IPTRSPSC(JFLD) = ISTSC+JFLD-1
-    ENDDO
+do while(NDONE .LT. NBATCHES)
 
-    IF(IF_UV_G > 0 .AND. IF_SCALARS_G > 0) THEN
-      CALL FTDIR_CTL(IF_UV_G,IF_SCALARS_G,IF_GP,IF_FS,&
-       & KVSETUV=IVSETUV(ISTUV_G:IENUV_G),&
-       & KVSETSC=IVSETSC(ISTSC_G:IENSC_G),KPTRGP=IPTRGP,PGP=PGP)
-    ELSEIF(IF_UV_G > 0) THEN
-      CALL FTDIR_CTL(IF_UV_G,IF_SCALARS_G,IF_GP,IF_FS,&
-       & KVSETUV=IVSETUV(ISTUV_G:IENUV_G),&
-       & KPTRGP=IPTRGP,PGP=PGP)
-    ELSEIF(IF_SCALARS_G > 0) THEN
-      CALL FTDIR_CTL(IF_UV_G,IF_SCALARS_G,IF_GP,IF_FS,&
-       & KVSETSC=IVSETSC(ISTSC_G:IENSC_G),KPTRGP=IPTRGP,PGP=PGP)
-    ENDIF
-    CALL LTDIR_CTL(IF_FS,IF_UV,IF_SCALARS, &
-     & PSPVOR=PSPVOR,PSPDIV=PSPDIV,PSPSCALAR=PSPSCALAR,&
-     & KFLDPTRUV=IPTRSPUV,KFLDPTRSC=IPTRSPSC)
-    
-  ENDDO
-ELSE
+   comm_compl = .false.
+   productive = .false.
+   IC = ACTIVE_COMMS%HEAD
+   DO WHILE(IC .NE. NULL)
+      call IC%test_comm(flg)  ! Test/progress
+      if(flg) then  ! If completed
+         call IC%complete_comm(batch)   ! Complete the communication call, release requests
+         CALL ACTIVE_COMMS%REMOVE(IC)
+         comm_compl = .true.
+         NCOMM_STARTED = NCOMM_STARTED -1
+         exit
+      endif
+      IC = IC%NEXT
+   enddo
+   
+   if(comm_compl) then    ! If a communication group has completed
 
-  ! No splitting of fields, transform done in one go
+      do WHILE(IB .NE. NULL) ! CHECK IF THERE ARE BATCHES PENDING COMMUNICATION; IF SO, START COMM ON THE FREED UP CHANNEL
+         if(IB%status .EQ. PENDING) then
+            CALL IB%COMM_DEP%START
+            NCOMM_STARTED = NCOMM_STARTED +1
+            EXIT
+         ENDIF
+      ENDDO
 
-  CALL FTDIR_CTL(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS,&
-   & KVSETUV=KVSETUV,KVSETSC=KVSETSC,&
-   & KVSETSC3A=KVSETSC3A,KVSETSC3B=KVSETSC3B,KVSETSC2=KVSETSC2,&
-   & PGP=PGP,PGPUV=PGPUV,PGP3A=PGP3A,PGP3B=PGP3B,PGP2=PGP2)
+      productive = .true.
+      call batch%execute  ! execute the next step in the algorithm for the batch that had communication completed, incl. start next communication if needed
+      if(stage .eq. stage_final) then   ! If we're not done with this batch, post next communication
+         call active_batches%remove(batch)
+         NACTIVE = NACTIVE -1
+         NDONE = NDONE+1
+      endif
+   else  ! if no communication is complete, see if we can do some computational work on current batches, if not we can initiate a new batch
 
-  CALL LTDIR_CTL(KF_FS,KF_UV,KF_SCALARS, &
-   &PSPVOR=PSPVOR,PSPDIV=PSPDIV,PSPSCALAR=PSPSCALAR,&
-   &PSPSC3A=PSPSC3A,PSPSC3B=PSPSC3B,PSPSC2=PSPSC2)
+      IB = ACTIVE_BATCHES%HEAD
+      do WHILE(IB .NE. NULL)
+         if(IB%status .ne. WAITING) then
+            productive = .true.
+            call IB%execute   ! Execute the next stage. This advances the stage marker to the next stage in the algorithm
+            if(stage .EQ. stage_final) then
+               call ACTIVE_BATCHES%REMOVE(IB)
+               NACTIVE = NACTIVE -1
+               NDONE = NDONE+1
+               if(ACTIVE_BATCHES%HEAD .EQ. NULL) then
+                  exit
+               endif
+            endif
+         endif
+         IB = IB%NEXT
+      enddo
+   
+      if(.not. productive) then   ! If everyone is waiting, start a new batch
+         if(nactive .lt. MAX_ACTIVE) then
+            nactive = nactive+1
+            call activate(nactive)  ! Start a new batch
+         endif
+      endif
 
-ENDIF
+   endif
+   
+enddo
+   
 
 !     ------------------------------------------------------------------
 
 END SUBROUTINE DIR_TRANS_CTL
 END MODULE DIR_TRANS_CTL_MOD
+
