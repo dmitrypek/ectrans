@@ -78,11 +78,21 @@ integer :: iuvlev,iuvpar,igp3alev,igp3apar,igp2par,igppar,igp3bpar,igp3blev
 !INTEGER(KIND=JPIM) :: IGP3APARS(KF_GP),IGP3ALEVS(KF_GP),IGP3BPARS(KF_GP),IGP3BLEVS(KF_GP)
 INTEGER, allocatable :: IUVLEVS(:),IUVPARS(:),IGP2PARS(:)
 INTEGER, allocatable :: IGP3APARS(:),IGP3ALEVS(:),IGP3BPARS(:),IGP3BLEVS(:)
+INTEGER(KIND=JPIM) :: IUVPAR,IUVLEV,IGP2PAR,IGP3ALEV,IGP3APAR,IGP3BLEV,IGP3BPAR,IPAROFF,igppar
+INTEGER(KIND=JPIM) :: KNSEND
+INTEGER(KIND=JPIM) :: KNRECV
+INTEGER(KIND=JPIM), ALLOCATABLE :: KSENDTOT (:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KSEND    (:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KRECV    (:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KINDEX(:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KNDOFF(:)
+INTEGER(KIND=JPIM), ALLOCATABLE :: KGPTRSEND(:,:,:)
 
 CONTAINS
 
-SUBROUTINE TRGTOL(PGLAT,KF_FS,KF_GP,KF_SCALARS_G,KVSET,KPTRGP,&
- &PGP,PGPUV,PGP3A,PGP3B,PGP2)
+!SUBROUTINE TRGTOL(PGLAT,KF_FS,KF_GP,KF_SCALARS_G,KVSET,KPTRGP,&
+     &PGP,PGPUV,PGP3A,PGP3B,PGP2)
+SUBROUTINE TRGTOL(NB,comm,RECVBUF)
 
 !**** *TRGTOL * - head routine for transposition of grid point data from column
 !                 structure to latitudinal. Reorganize data between
@@ -130,16 +140,19 @@ USE TPM_TRANS       ,ONLY : LDIVGP, LGPNORM, LSCDERS, LUVDER, LVORGP, NGPBLKS, N
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
-REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
-INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
-INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP(:,:,:)
-REAL(KIND=JPRB),OPTIONAL     :: PGPUV(:,:,:,:) !,INTENT(IN)
-REAL(KIND=JPRB),OPTIONAL     :: PGP3A(:,:,:,:) !,INTENT(IN)
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3B(:,:,:,:)
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP2(:,:,:)
+!INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
+!REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
+!INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
+!INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
+!INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP(:,:,:)
+!REAL(KIND=JPRB),OPTIONAL     :: PGPUV(:,:,:,:) !,INTENT(IN)
+!REAL(KIND=JPRB),OPTIONAL     :: PGP3A(:,:,:,:) !,INTENT(IN)
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3B(:,:,:,:)
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP2(:,:,:)
+INTEGER(KIND=JPIM), INTENT(IN) :: NB  ! BATCH ID TO BE PROCESSED
+TYPE(TCOMM), INTENT(IN) :: COMM       ! CURRENT COMMUNICATION STRUCTURE
+REAL(KIND=JPRB), INTENT(OUT) :: RECVBUF(:,:)
 
 INTEGER(KIND=JPIM) :: ISENDCOUNT
 INTEGER(KIND=JPIM) :: IRECVCOUNT
@@ -161,56 +174,22 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 IF (LHOOK) CALL DR_HOOK('TRGTOL',0,ZHOOK_HANDLE)
 
 
-CALL TRGTOL_PROLOG(KF_FS,KF_GP,KVSET,&
- & ISENDCOUNT,IRECVCOUNT,INSEND,INRECV,ISENDTOT,IRECVTOT,ISEND,IRECV,IINDEX,INDOFF,IGPTRSEND)
+!CALL TRGTOL_PROLOG(KF_FS,KF_GP,KVSET,&
+! & ISENDCOUNT,IRECVCOUNT,INSEND,INRECV,ISENDTOT,IRECVTOT,ISEND,IRECV,IINDEX,INDOFF,IGPTRSEND)
 
 ! Transition from assumed shape arrays to explicit shape
 
 if(init .eq. 0) then
-LLINDER = .FALSE.
-LLPGPUV = .FALSE.
-LLPGP3A = .FALSE.
-LLPGP3B = .FALSE.
-LLPGP2  = .FALSE.
-LLPGPONLY = .FALSE.
-IF(PRESENT(KPTRGP))  LLINDER = .TRUE.
-IF(PRESENT(PGP))  then
-   LLPGPONLY = .TRUE.
-   igppar = ubound(pgp,2)
-
-endif
-IF(PRESENT(PGPUV))  then
-   LLPGPUV = .TRUE.
-   iuvlev = ubound(pgpuv,2)
-   iuvpar = ubound(pgpuv,3)
-endif
-IF(PRESENT(PGP3A))  then
-   LLPGP3A = .TRUE.
-   igp3alev = ubound(pgp3a,2)
-   igp3apar = ubound(pgp3a,3)
-endif
-IF(PRESENT(PGP3B)) then
-   LLPGP3B = .TRUE.
-   IGP3BLEV=UBOUND(PGP3B,2)
-  IGP3BPAR=UBOUND(PGP3B,3)
-  IF(LSCDERS) IGP3BPAR=IGP3BPAR/3
-endif
-IF(PRESENT(PGP2)) then
-   LLPGP2 = .TRUE.
-   igp2par = ubound(pgp2,2)
-   IF(LSCDERS) IGP2PAR=IGP2PAR/3
-endif
 
 ! Initialization routine - call only once
-   call trgtol_init(kvset,igptrsend,kf_gp,kf_fs,insend,inrecv,irecv,isend,isendtot,kptrgp,kf_scalars_g)
+   call trgtol_init(igptrsend,insend,inrecv,irecv,isend,isendtot)
    init = 1
 endif
 
 
 
-CALL TRGTOL_COMM(PGLAT,KF_FS,KF_GP,KVSET, &
- & INSEND,INRECV,ISENDTOT,ISEND,IRECV,IINDEX,INDOFF,IGPTRSEND, &
- & KPTRGP,iuvlev,iuvpar,igp3alev,igp3apar,igp2par,igp3blev,igp3bpar,igppar,PGP,PGPUV,PGP3A,PGP3B,PGP2)
+CALL TRGTOL_COMM(INSEND,INRECV,ISENDTOT,ISEND,IRECV,IINDEX,INDOFF,IGPTRSEND, &
+ & iuvlev,iuvpar,igp3alev,igp3apar,igp2par,igp3blev,igp3bpar,igppar)
 
 IF (LHOOK) CALL DR_HOOK('TRGTOL',1,ZHOOK_HANDLE)
 
@@ -381,7 +360,7 @@ END SUBROUTINE TRGTOL_PROLOG
 !---------------------------------------------------------
 !        D. Pekurovsky (NVIDIA Corp.), 19 OCtober 2023: Introduced MPI Datatypes. 
 !     ------------------------------------------------------------------
-subroutine trgtol_init(kvset,kgptrsend,kf_gp,kf_fs,knsend,krecv,ksend,ksendtot,kptrgp,kf_scalars_g)
+subroutine trgtol_init
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE YOMHOOK   ,ONLY : LHOOK,   DR_HOOK, JPHOOK
@@ -396,17 +375,10 @@ USE TPM_TRANS       ,ONLY : LDIVGP, LGPNORM, LSCDERS, LUVDER, LVORGP, NGPBLKS, N
 
 USE PE2SET_MOD      ,ONLY : PE2SET
 USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
+USE DIR_TRANS_CTL_MOD
 
 use mpi
 
-INTEGER(KIND=JPIM), INTENT(IN) :: KGPTRSEND(2,NGPBLKS,NPRTRNS)
-INTEGER(KIND=JPIM), INTENT(IN) :: KSEND    (NPROC),knsend
-INTEGER(KIND=JPIM), INTENT(OUT) :: KRECV    (NPROC)
-INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
-INTEGER(KIND=JPIM), INTENT(IN) :: KSENDTOT (NPROC)
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
-
-integer :: kf_gp
 integer :: ins,isend,ifld,jfld,jblk,ifirst,ilast
 integer :: type_cont,type_tmp1,type_tmp2,req_id,tot_req_id
 integer(8) :: x,y
@@ -423,7 +395,7 @@ INTEGER(KIND=JPIM) :: ISEND_FLD_START,ISEND_FLD_END
 
 INTEGER(KIND=JPIM) :: ILEN, IPOS, ISETA, ISETB, IRECV, ISETV
 INTEGER(KIND=JPIM) :: ISETW(KNSEND)
-INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
+!INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM) :: IFLDA(KF_GP,KNSEND)
 character (len=25) envalue
 INTEGER(KIND = MPI_COUNT_KIND) :: lb, extent
@@ -432,7 +404,124 @@ INTEGER(KIND = MPI_COUNT_KIND) :: lb, extent
 !call getenv("OMPI_WANT_UMR",envalue)
 !print *,myproc-1,': OMPI_WANT_UMR=',TRIM(envalue)
 
+!     ------------------------------------------------------------------
+
+!*       0.    Some initializations
+!              --------------------
+
 CALL GSTATS(1805,0)
+
+LLINDER = .FALSE.
+LLPGPUV = .FALSE.
+LLPGP3A = .FALSE.
+LLPGP3B = .FALSE.
+LLPGP2  = .FALSE.
+LLPGPONLY = .FALSE.
+!IF(PRESENT(KPTRGP))  LLINDER = .TRUE.
+IF(PRESENT(PGP))  then
+   LLPGPONLY = .TRUE.
+   igppar = ubound(pgp,2)
+
+endif
+IF(PRESENT(PGPUV))  then
+   LLPGPUV = .TRUE.
+   iuvlev = ubound(pgpuv,2)
+   iuvpar = ubound(pgpuv,3)
+endif
+IF(PRESENT(PGP3A))  then
+   LLPGP3A = .TRUE.
+   igp3alev = ubound(pgp3a,2)
+   igp3apar = ubound(pgp3a,3)
+endif
+IF(PRESENT(PGP3B)) then
+   LLPGP3B = .TRUE.
+   IGP3BLEV=UBOUND(PGP3B,2)
+  IGP3BPAR=UBOUND(PGP3B,3)
+  IF(LSCDERS) IGP3BPAR=IGP3BPAR/3
+endif
+IF(PRESENT(PGP2)) then
+   LLPGP2 = .TRUE.
+   igp2par = ubound(pgp2,2)
+   IF(LSCDERS) IGP2PAR=IGP2PAR/3
+endif
+
+ALLOCATE( KSENDTOT (NPROC))
+ALLOCATE( KRECVTOT (NPROC))
+ALLOCATE( KSEND    (NPROC))
+ALLOCATE( KRECV    (NPROC))
+ALLOCATE( KINDEX(D%NLENGTF))
+ALLOCATE( KNDOFF(NPROC))
+ALLOCATE( KGPTRSEND(2,NGPBLKS,NPRTRNS))
+
+CALL INIGPTR(KGPTRSEND,IGPTRRECV)
+
+INDOFFX  = 0
+IBUFLENS = 0
+IBUFLENR = 0
+KNRECV   = 0
+KNSEND   = 0
+
+DO JROC=1,NPROC
+
+  CALL PE2SET(JROC,ISETA,ISETB,ISETW,ISETV)
+
+!             count up expected number of fields
+  IPOS = 0
+  DO JFLD=1,KF_GP
+    IF(KVSET(JFLD) == ISETV .OR. KVSET(JFLD) == -1) IPOS = IPOS+1
+  ENDDO
+  KSENDTOT(JROC) = IGPTRRECV(ISETW)*IPOS
+
+  IF( JROC /= MYPROC) THEN
+    IBUFLENS = MAX(IBUFLENS,KSENDTOT(JROC))
+    IF(KSENDTOT(JROC) > 0) THEN
+      KNSEND = KNSEND+1
+      KSEND(KNSEND)=JROC
+    ENDIF
+  ENDIF
+
+  IFIRSTLAT = MAX(D%NPTRLS(MYSETW),D%NFRSTLAT(ISETA))
+  ILASTLAT  = MIN(D%NPTRLS(MYSETW)+D%NULTPP(MYSETW)-1,D%NLSTLAT(ISETA))
+
+  IPOS = 0
+  DO JGL=IFIRSTLAT,ILASTLAT
+    IGL  = D%NPTRFRSTLAT(ISETA)+JGL-D%NFRSTLAT(ISETA)
+    IPOS = IPOS+D%NONL(IGL,ISETB)
+  ENDDO
+
+  KRECVTOT(JROC) = IPOS*KF_FS
+  IF(KRECVTOT(JROC) > 0 .AND. MYPROC /= JROC) THEN
+    KNRECV = KNRECV + 1
+    KRECV(KNRECV)=JROC
+  ENDIF
+  IF( JROC /= MYPROC) IBUFLENR = MAX(IBUFLENR,KRECVTOT(JROC))
+
+  IF(IPOS > 0) THEN
+    KNDOFF(JROC) = INDOFFX
+    INDOFFX = INDOFFX+IPOS
+    IPOS = 0
+    DO JGL=IFIRSTLAT,ILASTLAT
+      IGL  = D%NPTRFRSTLAT(ISETA)+JGL-D%NFRSTLAT(ISETA)
+      IGLL = JGL-D%NPTRLS(MYSETW)+1
+      DO JL=D%NSTA(IGL,ISETB)+D%NSTAGTF(IGLL),&
+       &D%NSTA(IGL,ISETB)+D%NSTAGTF(IGLL)+D%NONL(IGL,ISETB)-1
+        IPOS = IPOS+1
+        KINDEX(IPOS+KNDOFF(JROC)) = JL
+      ENDDO
+    ENDDO
+  ENDIF
+
+ENDDO
+
+KSENDCOUNT=0
+KRECVCOUNT=0
+DO J=1,NPROC
+  KSENDCOUNT=MAX(KSENDCOUNT,KSENDTOT(J))
+  KRECVCOUNT=MAX(KRECVCOUNT,KRECVTOT(J))
+ENDDO
+
+
+
 
 IUVPAR=0
 !IUVLEV=0
@@ -607,11 +696,11 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
   DO JFLD=1,KF_GP
     IF(KVSET(JFLD) == MYSETV .OR. KVSET(JFLD) == -1) THEN
       IFLDS = IFLDS+1
-      IF(LLINDER) THEN
-        IFLDOFF(IFLDS) = KPTRGP(JFLD)
-      ELSE
+!      IF(LLINDER) THEN
+!        IFLDOFF(IFLDS) = KPTRGP(JFLD)
+!      ELSE
         IFLDOFF(IFLDS) = JFLD
-      ENDIF
+!      ENDIF
     ENDIF
   ENDDO
 endif
@@ -732,13 +821,14 @@ DO INS=1,KNSEND
    DO JJ=ISEND_FLD_START,ISEND_FLD_END
       IFLDT=IFLDA(JJ,INS)
       iv = -1
-      IF(LLINDER) THEN
-         iv = 1
-         blocklength(iv,ins) = blocklength(iv,ins)+1
-         if(startsend(iv,ins) .eq. 0) then
-            startsend(iv,ins) = KPTRGP(IFLDT)
-         endif
-      ELSE IF(LLPGPONLY) THEN
+!      IF(LLINDER) THEN
+!         iv = 1
+!         blocklength(iv,ins) = blocklength(iv,ins)+1
+!         if(startsend(iv,ins) .eq. 0) then
+!            startsend(iv,ins) = KPTRGP(IFLDT)
+!         endif
+      !ELSE
+      IF(LLPGPONLY) THEN
          iv = 2
          blocklength(iv,ins) = blocklength(iv,ins)+1
          if(startsend(iv,ins) .eq. 0) then
@@ -884,9 +974,7 @@ deallocate(nflds)
 end subroutine trgtol_init
 
 
-SUBROUTINE TRGTOL_SEND(KF_FS,KF_GP,KVSET,&
- & KNSEND,KNRECV,KSENDTOT,KSEND,KRECV,KINDEX,KNDOFF,KGPTRSEND,&
- & KPTRGP,iuvlev,iuvpar,igp3alev,igp3apar,igp2par,igp3blev,igp3bpar,igppar,PGP,PGPUV,PGP3A,PGP3B,PGP2)
+SUBROUTINE TRGTOL_SEND(BATCH,comm,RECVBUF)
 
 !**** *TRGTOL_COMM * - transposition of grid point data from column
 !                 structure to latitudinal. Reorganize data between
@@ -957,7 +1045,7 @@ USE TPM_DISTR       ,ONLY : D, NPRCIDS, NPRTRNS, MTAGGL,  &
 USE TPM_TRANS       ,ONLY : LDIVGP, LGPNORM, LSCDERS, LUVDER, LVORGP, NGPBLKS, NPROMA
 
 USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
-
+use dir_trans_ctl_mo
 
 !
 use mpi
@@ -966,36 +1054,27 @@ IMPLICIT NONE
 
 !include 'mpif.h'
 
+INTEGER, INTENT(IN) :: BATCH
+TYPE(TCOMM), INTENT(IN) :: COMM
+REAL(KIND=JPRB), INTENT(OUT) :: RECVBUF
 
-INTEGER(KIND=JPIM) :: IUVPAR,IUVLEV,IGP2PAR,IGP3ALEV,IGP3APAR,IGP3BLEV,IGP3BPAR,IPAROFF,igppar
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
-!REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
-INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
-INTEGER(KIND=JPIM), INTENT(IN) :: KNSEND
-INTEGER(KIND=JPIM), INTENT(IN) :: KNRECV
-INTEGER(KIND=JPIM), INTENT(IN) :: KSENDTOT (NPROC)
-INTEGER(KIND=JPIM), INTENT(IN) :: KSEND    (NPROC)
-INTEGER(KIND=JPIM), INTENT(IN) :: KRECV    (NPROC)
-INTEGER(KIND=JPIM), INTENT(IN) :: KINDEX(D%NLENGTF)
-INTEGER(KIND=JPIM), INTENT(IN) :: KNDOFF(NPROC)
-INTEGER(KIND=JPIM), INTENT(IN) :: KGPTRSEND(2,NGPBLKS,NPRTRNS)
-INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP(nproma,igppar,ngpblks)
-#ifdef DEBUG_COMM
-REAL(KIND=JPRB),OPTIONAL     :: PGPUV(nproma,iuvlev,iuvpar,ngpblks) 
-REAL(KIND=JPRB),OPTIONAL     :: PGP3A(nproma,igp3alev,igp3apar,ngpblks) 
-REAL(KIND=JPRB),OPTIONAL     :: PGP2(nproma,igp2par,ngpblks) 
-#else
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGPUV(nproma,iuvlev,iuvpar,ngpblks) 
+!INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP(nproma,igppar,ngpblks)
+!#ifdef DEBUG_COMM
+!REAL(KIND=JPRB),OPTIONAL     :: PGPUV(nproma,iuvlev,iuvpar,ngpblks) 
+!REAL(KIND=JPRB),OPTIONAL     :: PGP3A(nproma,igp3alev,igp3apar,ngpblks) 
+!REAL(KIND=JPRB),OPTIONAL     :: PGP2(nproma,igp2par,ngpblks) 
+!#else
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGPUV(nproma,iuvlev,iuvpar,ngpblks) 
 !REAL(KIND=JPRB),OPTIONAL     :: PGPUV(:,:,:,:) !,INTENT(IN)
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3A(nproma,igp3alev,igp3apar,ngpblks) 
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP2(nproma,igp2par,ngpblks) 
-#endif
-REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3B(nproma,igp3blev,igp3bpar,ngpblks)
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3A(nproma,igp3alev,igp3apar,ngpblks) 
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP2(nproma,igp2par,ngpblks) 
+!#endif
+!REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP3B(nproma,igp3blev,igp3bpar,ngpblks)
 
 ! Send buffer is no longer needed: in this version we use MPI Datatypes to copy data directly from the origina arrays
 !REAL(KIND=JPRB), ALLOCATABLE :: ZCOMBUFS(:,:)
-REAL(KIND=JPRB), ALLOCATABLE :: ZCOMBUFR(:,:)
+!REAL(KIND=JPRB), ALLOCATABLE :: ZCOMBUFR(:,:)
 
 
 !     LOCAL INTEGER SCALARS
@@ -1061,7 +1140,11 @@ ELSE
    CALL GSTATS(804,0)
 ENDIF
 
-ALLOCATE(ZCOMBUFR(max_tot,tot_count))
+if(.not. allocated(zcombufr)) then
+   if(size(zcombufr,1) .lt. max_tot .or. size(zcombufr,2) .lt. tot_count) then
+      ALLOCATE(ZCOMBUFR(max_tot,tot_count))
+   endif
+endif
 
 !===============================================================================
 
@@ -1108,22 +1191,22 @@ DO INS=1,KNSEND
    ISEND=KSEND(INS)
    np = nprcids(isend) -1
    r = 1
-   if(LLINDER) then
-#ifdef SEND_BY_LEVEL
-      do j=0,blocklength(1,ins)-1
-#else
-         j = 0
-#endif
-         i2 = startsend(1,ins)+j
-         call mpi_isend(pgp(1,i2,start_blk(ins)),1,sendtype(1,ins),np, &
-           myproc*10000+r,mpi_comm_world,send_reqs(req_id),ierr)
-         req_id = req_id +1
-         r = r+1
-#ifdef SEND_BY_LEVEL
-      enddo
-#endif
+!   if(LLINDER) then
+!#ifdef SEND_BY_LEVEL
+!      do j=0,blocklength(1,ins)-1
+!#else
+!         j = 0
+!#endif
+!         i2 = startsend(1,ins)+j
+!         call mpi_isend(pgp(1,i2,start_blk(ins)),1,sendtype(1,ins),np, &
+!           myproc*10000+r,mpi_comm_world,send_reqs(req_id),ierr)
+!         req_id = req_id +1
+!         r = r+1
+!#ifdef SEND_BY_LEVEL
+!      enddo
+!#endif
 
-   elseif(LLPGPONLY) then
+   if(LLPGPONLY) then
 #ifdef SEND_BY_LEVEL
       do j=0,blocklength(2,ins)-1
 #else
@@ -1220,11 +1303,11 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
   DO JFLD=1,KF_GP
     IF(KVSET(JFLD) == MYSETV .OR. KVSET(JFLD) == -1) THEN
       IFLDS = IFLDS+1
-      IF(LLINDER) THEN
-        IFLDOFF(IFLDS) = KPTRGP(JFLD)
-      ELSE
+!      IF(LLINDER) THEN
+!        IFLDOFF(IFLDS) = KPTRGP(JFLD)
+!      ELSE
         IFLDOFF(IFLDS) = JFLD
-      ENDIF
+!      ENDIF
     ENDIF
   ENDDO
 
@@ -1308,7 +1391,7 @@ open(11,file=str,form='formatted',status='unknown',action='write')
 #endif
 
 
-DEALLOCATE(ZCOMBUFR)
+!DEALLOCATE(ZCOMBUFR)
 
 !==============================================
 
@@ -1318,17 +1401,17 @@ CALL GSTATS_BARRIER2(761)
 
 END SUBROUTINE TRGTOL_SEND
 
-SUBROUTINE TRGTOL_COMPLETE(PGLAT,NF,FBATCH,RECV_REQS,SEND_REQS,TOT_RECV_CNT,TOT_SEND_CNT)
+SUBROUTINE TRGTOL_COMPLETE(MYSTART,MYSIZE)
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 USE TPM_DISTR       ,ONLY : D
-
+USE DIR_TRANS_CTL_MOD
 USE MPI
 
 IMPLICIT NONE
   
-  INTEGER IERR,IND,INR,JNR,IRECV,TOT_RECV_CNT,TOT_SEND_cNT,NF,FBATCH,N0,S,F,II,I
-  REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,FBATCH)
+  INTEGER IERR,IND,INR,JNR,IRECV,TOT_RECV_CNT,TOT_SEND_cNT,MYSTART,MYSIZE,N0,S,F,II,I
+!  REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,FBATCH)
   
   
 DO JNR=1,TOT_RECV_CNT
