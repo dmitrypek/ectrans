@@ -89,6 +89,7 @@ USE LINKED_LIST_M,   ONLY: LINKEDLISTNODE
 USE TPM_DISTR,       ONLY: D, NPROC, NPRTRNS
 USE TPM_TRANS,       ONLY: NGPBLKS,FOUBUF,FOUBUF_IN
 USE TRGTOL_MOD,      ONLY: TRGTOL_PROLOG
+USE TIMING_MOD
 
 IMPLICIT NONE
 
@@ -176,7 +177,10 @@ IF (NPROMATR > 0) THEN
   IF (KF_SCALARS_G > 0) THEN
     IVSET(IST:IST+KF_SCALARS_G-1) = KVSETSC(:)
     IST = IST+KF_SCALARS_G
-  ENDIF
+ ENDIF
+
+ KSENDTOT = 0
+ KRECVTOT = 0
 
   ! Call TRGTOL_PROLOG on "global" parameters to determine sizes of communication buffers
   CALL TRGTOL_PROLOG(KF_FS, KF_GP, IVSET, KSENDCOUNT, KRECVCOUNT, KNSEND, KNRECV, KSENDTOT, &
@@ -184,6 +188,7 @@ IF (NPROMATR > 0) THEN
 
   ! Allocate receive request handle array
   KSENDCOUNT_GLOB = SUM(KSENDTOT)
+!  KRECVCOUNT_GLOB = SUM(KRECVTOT)
 
   IF (ALLOCATED(IREQ_RECV) .AND. SIZE(IREQ_RECV,1) /= KNRECV .AND. SIZE(IREQ_RECV,2) /= IBLKS) THEN
     DEALLOCATE(IREQ_RECV)
@@ -223,6 +228,10 @@ IF (NPROMATR > 0) THEN
   ELSE
     ALLOCATE(FOUBUF_IN(MAX(1,IBLEN)))
   ENDIF
+
+  if(.not. allocated(sendcount)) then
+     allocate(sendcount(2,IBLKS),recvcount(2,IBLKS))
+  endif
 
   ! ================================================================================================
   ! Begin overlap loop

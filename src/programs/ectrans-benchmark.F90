@@ -27,8 +27,8 @@ use mpl_module
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : dr_hook_init
 use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcount, t_event, t_batch, &
-  &                   t_stage, t_type
-
+  &                   t_stage, t_type,sendcount,recvcount
+use mpi, only : MPI_DOUBLE_PRECISION,MPI_INTEGER
 implicit none
 
 ! Number of points in top/bottom latitudes
@@ -171,11 +171,13 @@ logical :: luse_mpi = .true.
 
 character(len=16) :: cgrid = ''
 
-integer(kind=jpim) :: ierr
+integer(kind=jpim) :: ierr,iproc,j,k,l,nbatches
 integer :: icall_mode = 1
 integer :: inum_wind_fields, inum_sc_3d_fields, inum_sc_2d_fields, itotal_fields
 integer :: ipgp_start, ipgp_end, ipgpuv_start, ipgpuv_end
 real(jprd) :: t0
+real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
+integer, allocatable :: gsendcount(:,:,:),grecvcount(:,:,:)
 
 interface
 subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
@@ -207,6 +209,7 @@ call get_command_line_arguments(nsmax, cgrid, iters, nfld, nlev, lvordiv, lscder
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
+nbatches = (nlev*3+1)/npromatr
 
 !===================================================================================================
 
@@ -221,7 +224,7 @@ else
 endif
 nthread = oml_max_threads()
 
-call start_MPI_helper
+!call start_MPI_helper
 
 call dr_hook_init()
 
@@ -894,21 +897,53 @@ write(nout,'(" ")')
 write(nout,'(a)') '======= End of time step stats ======='
 write(nout,'(" ")')
 
+allocate(t_comm(3,2,nbatches),t_comp(2,2,nbatches))
 
 do i = 1, tcount - 1
    select case(t_type(i))
      case(tcomm1)
-       write(1000+myproc,*) "COMM", 1, t_batch(i), t_stage(i), t_event(i) - t0
+        write(1000+myproc,*) "COMM", 1, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(1,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomm2)
        write(1000+myproc,*) "COMM", 2, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(2,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomm3)
        write(1000+myproc,*) "COMM", 3, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comm(3,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomp1)
        write(1000+myproc,*) "COMP", 1, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comp(1,t_stage(i),t_batch(i)) = t_event(i) - t0
      case(tcomp2)
        write(1000+myproc,*) "COMP", 3, t_batch(i), t_stage(i), t_event(i) - t0
+        t_comp(2,t_stage(i),t_batch(i)) = t_event(i) - t0
    end select
 end do
+
+if(myproc .eq. 1) then
+   allocate(gt_comm(3,2,nbatches,nproc),gt_comp(2,2,nbatches,nproc),gsendcount(2,nbatches,nproc),grecvcount(2,nbatches,nproc))
+endif
+
+call mpi_gather(t_comm,6*nbatches,MPI_DOUBLE_PRECISION,gt_comm,6*nbatches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+call mpi_gather(t_comp,4*nbatches,MPI_DOUBLE_PRECISION,gt_comp,4*nbatches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
+call mpi_gather(sendcount,2*nbatches,MPI_INTEGER,gsendcount,2*nbatches,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+call mpi_gather(recvcount,2*nbatches,MPI_INTEGER,grecvcount,2*nbatches,MPI_INTEGER,0,MPI_COMM_WORLD,ierr)
+
+if(myproc .eq. 1) then
+   open(10,file='sum.txt',action='write',form='formatted')
+   do iproc = 1,nproc
+      write(10,*) (((gt_comm(j,k,l,iproc), j=1,3), k=1,2), l=1,nbatches)
+   enddo
+   write(10,*) ' '
+   do iproc = 1,nproc
+      write(10,*) (((gt_comp(j,k,l,iproc), j=1,2), k=1,2), l=1,nbatches)
+   enddo
+   do iproc = 1,nproc
+      write(10,*) ((gsendcount(i,j,iproc)*4, i=1,2),j=1,nbatches), ((grecvcount(i,j,iproc)*4, i=1,2),j=1,nbatches)
+   enddo
+   close(10)
+
+endif
+
 
 if (lstack) then
   ! Gather stack usage statistics
@@ -954,7 +989,7 @@ endif
 ! Finalize MPI
 !===================================================================================================
 
-call stop_MPI_helper
+!call stop_MPI_helper
 
 if (luse_mpi) then
   call mpl_end(ldmeminfo=.false.)

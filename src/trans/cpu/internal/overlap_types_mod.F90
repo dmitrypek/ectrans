@@ -188,7 +188,7 @@ CONTAINS
     USE TRGTOL_MOD, ONLY: TRGTOL_COMM_SEND
     USE LTDIR_CTL_MOD, ONLY: LTDIR_CTL_SEND
     USE TPM_DISTR, ONLY: MYPROC
-    USE TIMING_MOD, ONLY: GET_TIME
+    USE TIMING_MOD, ONLY: GET_TIME,sendcount,recvcount
     
     CLASS(BATCH),              INTENT(INOUT) :: THIS
     REAL(KIND=JPRB), OPTIONAL, INTENT(IN)    :: PGP(:,:,:)
@@ -211,9 +211,13 @@ CONTAINS
           &                   THIS%NNSEND, THIS%NNRECV, THIS%NSENDTOT, THIS%NRECVTOT, THIS%NSEND, &
           &                   THIS%NRECV, THIS%NINDEX, THIS%NNDOFF, THIS%NGPTRSEND, IREQ_RECV, &
           &                   THIS%NPTRGP, PGP)
+        sendcount(1,this%nblk) = sum(this%nsendtot)
+        recvcount(1,this%nblk) = sum(this%nrecvtot)
 
       CASE (2)
         CALL LTDIR_CTL_SEND(THIS%IOFFGTF,THIS%NF_FS,THIS%A2AREQ,THIS%ILENS,THIS%ILENR,THIS%IOFFS,THIS%IOFFR)
+        sendcount(2,this%nblk) = sum(this%ilens)
+        recvcount(2,this%nblk) = sum(this%ilenr)
     END SELECT
 
     T_EVENT(TCOUNT) = GET_TIME()
@@ -228,7 +232,7 @@ CONTAINS
   FUNCTION COMM_COMPLETE(THIS, IREQ_RECV)
     USE MPI, ONLY: MPI_STATUS_IGNORE, MPI_TESTALL,MPI_STATUSES_IGNORE
     USE TPM_DISTR, ONLY: MYPROC
-    USE TIMING_MOD, ONLY: GET_TIME
+    USE TIMING_MOD, ONLY: GET_TIME,sendcount,recvcount
     USE TPM_TRANS,       ONLY: FOUBUF,FOUBUF_IN
 
     CLASS(BATCH),       INTENT(INOUT) :: THIS
