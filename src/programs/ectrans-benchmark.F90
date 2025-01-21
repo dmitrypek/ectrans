@@ -23,16 +23,20 @@ program ectrans_benchmark
 
 use parkind1, only: jpim, jprb, jprd
 use oml_mod ,only : oml_max_threads
-use mpl_module
+use mpl_module , only : mpl_init,mpl_comm,mpl_nproc,mpl_myrank,mpl_cart_coords, &
+     &   mpl_groups_create,mpl_broadcast,mpl_allreduce,mpl_buffer_method, &
+     &   mpl_recv,mpl_send,mpl_end
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
-use yomhook, only : dr_hook_init
+use yomhook, only : jphook, dr_hook, dr_hook_init
 use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcount, t_event, t_batch, &
   &                   t_stage, t_type
-use mpi, only : MPI_DOUBLE_PRECISION
+!use progress_thread
+use mpi, only : MPI_DOUBLE_PRECISION,MPI_COMM_WORLD,mpi_barrier
 
 implicit none
 
 ! Number of points in top/bottom latitudes
+real(jphook) :: zhook_handle
 integer(kind=jpim), parameter :: min_octa_points = 20
 
 integer(kind=jpim) :: istack, getstackusage
@@ -182,9 +186,9 @@ integer :: num_batches
 real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
 
 interface
-subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
+subroutine start_MPI_helper() bind(C, name="start_MPI_helper")
 end subroutine
-subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
+subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper")
 end subroutine
 end interface
 
@@ -665,6 +669,8 @@ do jstep = 1, iters+2
 
   ztstep2(jstep) = timef()
 
+  call mpi_barrier(mpi_comm_world,ierr)
+  call dr_hook('DRHOOK_PAPI_DIR_TRANS', 0, zhook_handle)
   call gstats(5,0)
   if (icall_mode == 1) then
     call dir_trans(pgp=zgp(:,ipgp_start:ipgp_end,:), pspvor=zspvor, pspdiv=zspdiv, &
@@ -677,6 +683,8 @@ do jstep = 1, iters+2
   endif
   call gstats(5,1)
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
+  call dr_hook('DRHOOK_PAPI_DIR_TRANS', 1, zhook_handle)
+  call mpi_barrier(mpi_comm_world,ierr)
 
   !=================================================================================================
   ! Calculate timings
