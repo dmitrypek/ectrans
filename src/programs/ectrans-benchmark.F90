@@ -51,6 +51,7 @@ use oml_mod ,only : oml_max_threads
 use mpl_module
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : dr_hook_init
+use progress_thread
 
 implicit none
 
@@ -137,6 +138,7 @@ logical :: luvders = .false.
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
 logical :: luse_progress_thread = .false.
+logical :: luse_waitany = .false.
 
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
@@ -211,12 +213,12 @@ character(len=16) :: cgrid = ''
 
 integer(kind=jpim) :: ierr
 
-interface
-subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
-end subroutine
-subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
-end subroutine
-end interface
+!interface
+!subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
+!end subroutine
+!subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
+!end subroutine
+!end interface
 
 !===================================================================================================
 
@@ -237,7 +239,7 @@ luse_mpi = detect_mpirun()
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
      & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
-     & luse_progress_thread)
+     & luse_progress_thread, luse_waitany)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -691,7 +693,7 @@ do jstep = 1, iters+iters_warmup
       & pspsc3a=zspsc3a,                    &
       & kvsetuv=ivset,                      &
       & kvsetsc2=ivsetsc,                   &
-      & kvsetsc3a=ivset)
+      & kvsetsc3a=ivset,luse_waitany=luse_waitany)
   else
     call dir_trans(kresol=1, kproma=nproma, &
       & pgp2=zgmvs(:,1:1,:),                &
@@ -699,7 +701,7 @@ do jstep = 1, iters+iters_warmup
       & pspsc2=zspsc2,                      &
       & pspsc3a=zspsc3a,                    &
       & kvsetsc2=ivsetsc,                   &
-      & kvsetsc3a=ivset)
+      & kvsetsc3a=ivset,luse_waitany=luse_waitany)
   endif
   call gstats(5,1)
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
@@ -1078,7 +1080,7 @@ end subroutine
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
   &                                   lmeminfo, nprtrv, nprtrw, ncheck, &
-  &                                   luse_progress_thread)
+  &                                   luse_progress_thread, luse_waitany)
 
   integer, intent(inout) :: nsmax           ! Spectral truncation
   character(len=16), intent(inout) :: cgrid ! Spectral truncation
@@ -1104,7 +1106,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
 
   character(len=128) :: carg          ! Storage variable for command line arguments
   integer            :: iarg = 1      ! Argument index
-  logical, intent(inout) :: luse_progress_thread
+  logical, intent(inout) :: luse_progress_thread,luse_waitany
 
 #ifdef ACCGPU
   !$acc init
@@ -1156,6 +1158,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
       case('--nprtrw'); nprtrw = get_int_value('--nprtrw', iarg)
       case('-c', '--check'); ncheck = get_int_value('-c', iarg)
       case('--progress-thread'); luse_progress_thread = .True.
+      case('--waitany'); luse_waitany = .True.
       case default
         call parsing_failed("Unrecognised argument: " // trim(carg))
 
