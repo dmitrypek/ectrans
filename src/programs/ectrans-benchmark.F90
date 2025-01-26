@@ -136,6 +136,7 @@ logical :: lscders = .false.
 logical :: luvders = .false.
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
+logical :: luse_progress_thread = .false.
 
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
@@ -210,6 +211,13 @@ character(len=16) :: cgrid = ''
 
 integer(kind=jpim) :: ierr
 
+interface
+subroutine start_MPI_helper() bind(C, name="start_MPI_helper_")
+end subroutine
+subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper_")
+end subroutine
+end interface
+
 !===================================================================================================
 
 #include "setup_trans0.h"
@@ -228,7 +236,8 @@ luse_mpi = detect_mpirun()
 
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
-  & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck)
+     & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
+     & luse_progress_thread)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -246,6 +255,10 @@ else
   lsync_trans = .false.
 endif
 nthread = oml_max_threads()
+
+if (luse_progress_thread) then
+  call start_MPI_helper
+endif
 
 call dr_hook_init()
 
@@ -958,6 +971,10 @@ endif
 ! Finalize MPI
 !===================================================================================================
 
+if (luse_progress_thread) then
+  call stop_MPI_helper
+endif
+
 if (luse_mpi) then
   call mpl_end(ldmeminfo=.false.)
 endif
@@ -1060,7 +1077,8 @@ end subroutine
 
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
-  &                                   lmeminfo, nprtrv, nprtrw, ncheck)
+  &                                   lmeminfo, nprtrv, nprtrw, ncheck, &
+  &                                   luse_progress_thread)
 
   integer, intent(inout) :: nsmax           ! Spectral truncation
   character(len=16), intent(inout) :: cgrid ! Spectral truncation
@@ -1086,6 +1104,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
 
   character(len=128) :: carg          ! Storage variable for command line arguments
   integer            :: iarg = 1      ! Argument index
+  logical, intent(inout) :: luse_progress_thread
 
 #ifdef ACCGPU
   !$acc init
@@ -1136,6 +1155,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
       case('--nprtrv'); nprtrv = get_int_value('--nprtrv', iarg)
       case('--nprtrw'); nprtrw = get_int_value('--nprtrw', iarg)
       case('-c', '--check'); ncheck = get_int_value('-c', iarg)
+      case('--progress-thread'); luse_progress_thread = .True.
       case default
         call parsing_failed("Unrecognised argument: " // trim(carg))
 
