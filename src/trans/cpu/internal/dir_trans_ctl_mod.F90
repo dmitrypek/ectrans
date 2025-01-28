@@ -325,6 +325,7 @@ END SUBROUTINE DIR_TRANS_CTL
                     &                 dest, MTAGGL, MPI_COMM_WORLD, IREQ_SEND(INS),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_SEND,FLG,SEND_ID(1),STATUS)
+       print *,'Registered send reqset ',send_id(1)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -335,6 +336,7 @@ END SUBROUTINE DIR_TRANS_CTL
             &                  ILENR,IOFFR, MPI_REAL, MPL_ALL_MS_COMM,MPI_INFO_NULL,A2AREQ,IERR )
        REQ_TMP(1) = A2AREQ
        CALL PT_REQSET_REGISTER(1,REQ_TMP,FLG,SEND_ID(2),STATUS)
+       print *,'Registered send reqset ',send_id(2)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -375,6 +377,7 @@ END SUBROUTINE DIR_TRANS_CTL
                     &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_RECV,FLG,RECV_ID(1),STATUS)
+       print *,'Registered receive reqset ',recv_id(1)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_RECVS'
        ENDIF

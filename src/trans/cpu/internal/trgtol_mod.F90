@@ -542,6 +542,7 @@ ENDIF
 !   ENDDO
 !ENDIF
 
+print *,'Starting receive reqset ',recv_id(1)
 CALL PT_REQSET_START(RECV_ID(1),STATUS)
 
 IF(.NOT.LGPNORM)THEN
@@ -921,7 +922,9 @@ ENDDO
 !
 !ENDDO
 
+print *,'Starting send reqset ',send_id(1)
 CALL PT_REQSET_START(SEND_ID(1))
+
 
 !  Unpack loop.........................................................
 

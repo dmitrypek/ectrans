@@ -6,10 +6,10 @@ module progress_thread
 
 interface
 
-    subroutine start_mpi_helper() bind(C, name='start_mpi_helper')
+    subroutine start_mpi_helper() bind(C, name='start_MPI_helper')
         import
     end subroutine start_mpi_helper
-    subroutine stop_mpi_helper() bind(C, name='stop_mpi_helper')
+    subroutine stop_mpi_helper() bind(C, name='stop_MPI_helper')
         import
     end subroutine stop_mpi_helper
 
