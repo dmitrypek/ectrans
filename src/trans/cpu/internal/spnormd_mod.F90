@@ -10,12 +10,12 @@
 
 MODULE SPNORMD_MOD
 CONTAINS
-SUBROUTINE SPNORMD(PSPEC,KFLD,PMET,PSM)
+SUBROUTINE SPNORMD(PSPEC,KFLD,PMET,PSM,sout)
 
 USE PARKIND1  ,ONLY : JPIM     ,JPRB
 
 USE TPM_DIM         ,ONLY : R
-USE TPM_DISTR       ,ONLY : D
+USE TPM_DISTR       ,ONLY : D,myproc
 !
 
 IMPLICIT NONE
@@ -24,11 +24,19 @@ REAL(KIND=JPRB)    ,INTENT(IN)  :: PSPEC(:,:)
 REAL(KIND=JPRB)    ,INTENT(IN)  :: PMET(0:R%NSMAX)
 INTEGER(KIND=JPIM) ,INTENT(IN)  :: KFLD
 REAL(KIND=JPRB)    ,INTENT(OUT) :: PSM(:,:)
+character(*), INTENT(IN) :: sout
 
 INTEGER(KIND=JPIM) :: JM ,JFLD ,JN ,IM ,ISP
+character(len=50) :: s1,s2,s3,str
 
 !     ------------------------------------------------------------------
 
+s1 = 'norm.'
+write(s2,9) myproc-1
+9 format('.',i0)
+s3 = trim(s2)
+str = trim(s1) // sout // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
 
 CALL GSTATS(1651,0)
 !$OMP PARALLEL DO SCHEDULE(STATIC,1)  PRIVATE(JM,IM,JN,ISP,JFLD)
@@ -40,6 +48,7 @@ DO JM=1,D%NUMP
       ISP = D%NASM0(0)+JN*2
       DO JFLD=1,KFLD
         PSM(JFLD,JM) = PSM(JFLD,JM)+PMET(JN)*PSPEC(JFLD,ISP)**2
+        write(11,10) jfld,jm,psm(jfld,jm)
       ENDDO
     ENDDO
   ELSE
@@ -48,12 +57,16 @@ DO JM=1,D%NUMP
       DO JFLD=1,KFLD
         PSM(JFLD,JM) = PSM(JFLD,JM)+2.0_JPRB*PMET(JN)*&
          &(PSPEC(JFLD,ISP)**2+PSPEC(JFLD,ISP+1)**2)
-      ENDDO
+        write(11,10) jfld,jm,psm(jfld,jm)
+10 format(i3,i8,' ',E18.10)        
+     ENDDO
     ENDDO
   ENDIF
 ENDDO
 !$OMP END PARALLEL DO
 CALL GSTATS(1651,1)
+
+close(11)
 
 !     ------------------------------------------------------------------
 

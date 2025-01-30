@@ -538,12 +538,12 @@ if (lprint_norms .or. ncheck > 0) then
   allocate(znormt(nflevg))
   allocate(znormt1(nflevg))
 
-  call specnorm(pspec=zspvor(1:nflevl,:),    pnorm=znormvor1, kvset=ivset(1:nflevg))
-  call specnorm(pspec=zspdiv(1:nflevl,:),    pnorm=znormdiv1, kvset=ivset(1:nflevg))
+  call specnorm(pspec=zspvor(1:nflevl,:),sout='zspvor0',    pnorm=znormvor1, kvset=ivset(1:nflevg))
+  call specnorm(pspec=zspdiv(1:nflevl,:), sout='zspdiv0',   pnorm=znormdiv1, kvset=ivset(1:nflevg))
   if (nfld > 0) then
-    call specnorm(pspec=zspsc3a(1:nflevl,:,1), pnorm=znormt1,   kvset=ivset(1:nflevg))
+    call specnorm(pspec=zspsc3a(1:nflevl,:,1), sout='zspsc3a0',pnorm=znormt1,   kvset=ivset(1:nflevg))
   endif
-  call specnorm(pspec=zspsc2(1:1,:),         pnorm=znormsp1,  kvset=ivsetsc)
+  call specnorm(pspec=zspsc2(1:1,:),  sout=   'zspsc20',    pnorm=znormsp1,  kvset=ivsetsc)
 
   if (verbosity >= 1 .and. myproc == 1) then
     do ifld = 1, nflevg
@@ -699,12 +699,12 @@ do jstep = 1, iters+iters_warmup
 
   if (lprint_norms) then
     call gstats(6,0)
-    call specnorm(pspec=zspsc2(1:1,:),         pnorm=znormsp,  kvset=ivsetsc(1:1))
-    call specnorm(pspec=zspvor(1:nflevl,:),    pnorm=znormvor, kvset=ivset(1:nflevg))
-    call specnorm(pspec=zspdiv(1:nflevl,:),    pnorm=znormdiv, kvset=ivset(1:nflevg))
-    if (nfld > 0) then
-      call specnorm(pspec=zspsc3a(1:nflevl,:,1), pnorm=znormt,   kvset=ivset(1:nflevg))
-    endif
+!    call specnorm(pspec=zspsc2(1:1,:),         pnorm=znormsp,  kvset=ivsetsc(1:1))
+!    call specnorm(pspec=zspvor(1:nflevl,:),    pnorm=znormvor, kvset=ivset(1:nflevg))
+!    call specnorm(pspec=zspdiv(1:nflevl,:),    pnorm=znormdiv, kvset=ivset(1:nflevg))
+!    if (nfld > 0) then
+!      call specnorm(pspec=zspsc3a(1:nflevl,:,1), pnorm=znormt,   kvset=ivset(1:nflevg))
+!    endif
 
     ! Surface pressure
     if (myproc == 1) then
@@ -754,12 +754,12 @@ write(nout,'(a)') '======= End of spectral transforms  ======='
 write(nout,'(" ")')
 
 if (lprint_norms .or. ncheck > 0) then
-  call specnorm(pspec=zspvor(1:nflevl,:),    pnorm=znormvor, kvset=ivset)
-  call specnorm(pspec=zspdiv(1:nflevl,:),    pnorm=znormdiv, kvset=ivset)
+  call specnorm(pspec=zspvor(1:nflevl,:), sout='zspvor1',   pnorm=znormvor, kvset=ivset)
+  call specnorm(pspec=zspdiv(1:nflevl,:), sout='zspdiv1',   pnorm=znormdiv, kvset=ivset)
   if (nfld > 0) then
-    call specnorm(pspec=zspsc3a(1:nflevl,:,1), pnorm=znormt,   kvset=ivset)
+    call specnorm(pspec=zspsc3a(1:nflevl,:,1),sout= 'zspsc3a1',pnorm=znormt,   kvset=ivset)
   endif
-  call specnorm(pspec=zspsc2(1:1,:),         pnorm=znormsp,  kvset=ivsetsc)
+  call specnorm(pspec=zspsc2(1:1,:),     sout='zspsc21',    pnorm=znormsp,  kvset=ivsetsc)
 
   if (myproc == 1) then
     zmaxerr(:) = -999.0
