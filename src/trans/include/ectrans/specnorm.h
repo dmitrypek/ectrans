@@ -9,7 +9,7 @@
 !
 
 INTERFACE
-SUBROUTINE SPECNORM(PNORM,PSPEC,KVSET,KMASTER,KRESOL,PMET)
+  SUBROUTINE SPECNORM(PNORM,sout,PSPEC,KVSET,KMASTER,KRESOL,PMET)
 
 !**** *SPECNORM* - Compute global spectral norms
 
@@ -61,8 +61,10 @@ INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KVSET(:)
 INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KMASTER
 REAL(KIND=JPRB)    ,OPTIONAL, INTENT(IN)  :: PMET(:)
 INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN)  :: KRESOL
+character(*), intent(in) :: sout
 
-!     ------------------------------------------------------------------
+
+				       !     ------------------------------------------------------------------
 
 END SUBROUTINE SPECNORM
 
