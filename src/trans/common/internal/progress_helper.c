@@ -11,8 +11,16 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdatomic.h>
+#include <sys/syscall.h>
 #include "progress_helper.h"
 
+#ifdef SYS_gettid
+int gettid() {
+  return(syscall(SYS_gettid));
+}
+#else
+#error "SYS_gettid unavailable on this system"
+#endif
 /* User configuration */
 static bool verbose = false;  /* be quiet or verbose */
 int read_counters = 1;  /* Non-zero to activate the counters */

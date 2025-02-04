@@ -1299,6 +1299,8 @@ subroutine print_help(unit)
   write(nout, "(a)") ""
   write(nout, "(a)") "DEBUGGING"
   write(nout, "(a)") "    --dump-values       Output gridpoint fields in unformatted binary file"
+  write(nout, "(a)") "    --progress-thread   Use a separate progress thread for communication calls"
+  write(nout, "(a)") "    --waitany           Use MPI_Waitany, rather than MPI_Waitall, in trgtol. Applies only with progress thread"
   write(nout, "(a)") ""
 
 end subroutine print_help
