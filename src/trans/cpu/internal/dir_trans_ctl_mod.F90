@@ -146,7 +146,7 @@ INTEGER(KIND=JPIM) :: IVSETSC(KF_SCALARS_G)
 INTEGER(KIND=JPIM) :: IFGP2,IFGP3A,IFGP3B,IOFF,J3
 
 !     ------------------------------------------------------------------
-print *,'kf_uv_g,kf_scalars_g,kf_gp=',kf_uv_g,kf_scalars_g,kf_gp
+!print *,'kf_uv_g,kf_scalars_g,kf_gp=',kf_uv_g,kf_scalars_g,kf_gp
 !ivset(412) = -1
 ! Perform transform
 
@@ -245,7 +245,7 @@ ENDIF
     IVSET(IST:IST+KF_UV_G-1) = IVSETUV(:)
     IST = IST+KF_UV_G
   ENDIF
-  print *,'IST =',IST
+!  print *,'IST =',IST
   IF (KF_SCALARS_G > 0) THEN
     IVSET(IST:IST+KF_SCALARS_G-1) = IVSETSC(:)
     IST = IST+KF_SCALARS_G
@@ -307,7 +307,7 @@ END SUBROUTINE DIR_TRANS_CTL
     INTEGER(KIND=JPIM) :: IST,IEN,IERR,REQ_TMP(1),dest,FLG
     INTEGER(KIND=JPIM) :: ILENS(NPRTRW),IOFFS(NPRTRW),ILENR(NPRTRW),IOFFR(NPRTRW)
 
-    FLG = 0
+    FLG = 0;
     
     DO J=1,NPRTRW
        ILENS(J) = D%NLTSGTB(J)*KFIELD
@@ -336,7 +336,7 @@ END SUBROUTINE DIR_TRANS_CTL
             &                  ILENR,IOFFR, MPI_REAL, MPL_ALL_MS_COMM,MPI_INFO_NULL,A2AREQ,IERR )
        REQ_TMP(1) = A2AREQ
        CALL PT_REQSET_REGISTER(1,REQ_TMP,FLG,SEND_ID(2),STATUS)
-       print *,'Registered send reqset ',send_id(2)
+ !      print *,'Registered send reqset ',send_id(2)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -364,7 +364,7 @@ END SUBROUTINE DIR_TRANS_CTL
     INTEGER INR, IRECV,NREQ,STATUS
     INTEGER(KIND=JPIM) :: IST,IEN,IERR,SRC,FLG
 
-    FLG = 0
+    FLG = 8
 
     
 !    IF(THIS%STAGE .EQ. 1) THEN
@@ -377,7 +377,7 @@ END SUBROUTINE DIR_TRANS_CTL
                     &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_RECV,FLG,RECV_ID(1),STATUS)
-       print *,'Registered receive reqset ',recv_id(1)
+!       print *,'Registered receive reqset ',recv_id(1)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_RECVS'
        ENDIF

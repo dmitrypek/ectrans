@@ -34,21 +34,21 @@ interface
         import
         integer(C_INT), INTENT(IN) :: gid
 !        integer(C_INT), OPTIONAL, INTENT(OUT) :: mpistatuses(:)        
-        integer(C_INT), OPTIONAL, INTENT(OUT) :: ierr
+        integer(C_INT), INTENT(OUT) :: ierr
     end subroutine pt_reqset_wait_f
 
     subroutine pt_reqset_waitany_f(gid, idx, ierr) bind(C, name='pt_reqset_waitany_f')
       import
-      integer(C_INT), INTENT(IN) :: gid
+      integer(C_INT), VALUE, INTENT(IN) :: gid
       integer(C_INT), INTENT(OUT) :: idx
       !        integer(C_INT), OPTIONAL, INTENT(OUT) :: mpistatuses(:)        
-      integer(C_INT), OPTIONAL, INTENT(OUT) :: ierr
+      integer(C_INT), INTENT(OUT) :: ierr
     end subroutine pt_reqset_waitany_f
 
 !    subroutine pt_reqset_test_f(gid, flag, mpistatuses, ierr) bind(C, name='pt_reqset_test_f')
     subroutine pt_reqset_test_f(gid, flag, ierr) bind(C, name='pt_reqset_test_f')
         use mpi_f08
-        integer(C_INT), INTENT(IN) :: gid
+        integer(C_INT), VALUE, INTENT(IN) :: gid
         integer(C_INT), INTENT(OUT) :: flag
         integer(C_INT), INTENT(OUT) :: ierr
 !        type(MPI_STATUS), INTENT(OUT) :: mpistatuses(*)
@@ -70,7 +70,7 @@ contains
     end subroutine pt_reqset_wait
 
         subroutine pt_reqset_waitany(gid, idx, mpistatuses, ierr)
-        integer(C_INT), INTENT(IN) :: gid
+        integer(C_INT), VALUE, INTENT(IN) :: gid
         integer(C_INT), INTENT(OUT) :: idx
         integer(C_INT), OPTIONAL, INTENT(OUT) :: ierr
         integer(C_INT), OPTIONAL, INTENT(OUT) :: mpistatuses(:)

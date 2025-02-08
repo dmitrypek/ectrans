@@ -8,10 +8,13 @@
 ! nor does it submit to any jurisdiction.
 !
 
+!#define DEBUG_COMM
+
 MODULE TRGTOL_MOD
 
 PUBLIC TRGTOL,TRGTOL_PROLOG
 PRIVATE  TRGTOL_COMM, TRGTOL_COMM_HEAP, TRGTOL_COMM_STACK
+integer :: istep=0
 
 CONTAINS
 
@@ -498,7 +501,8 @@ LOGICAL   :: LLUV(KF_GP),LLGP2(KF_GP),LLGP3A(KF_GP),LLGP3B(KF_GP)
 
 !     LOCAL INTEGER SCALARS
 INTEGER(KIND=JPIM) :: IFIRST, ILAST, ILEN, IPOS, ISETA, ISETB, IRECV, ISETV
-INTEGER(KIND=JPIM) :: ISEND, ITAG, JBLK, JFLD, JK, JL, IFLD, II, IFLDS, INS, INR
+INTEGER(KIND=JPIM) :: ISEND, ITAG, JBLK, JFLD, JK, JL, IFLD, II, IFLDS, INS
+INTEGER(C_INT) :: INR
 INTEGER(KIND=JPIM) :: JJ,JI,IFLDT, J,STATUS
 
 INTEGER(KIND=JPIB) :: JFLD64
@@ -511,6 +515,7 @@ INTEGER(KIND=JPIM) :: IFLDOFF(KF_FS)
 INTEGER(KIND=JPIM) :: ISEND_FLD_START,ISEND_FLD_END
 INTEGER(KIND=JPIM) :: IRECV_FLD_START,IRECV_FLD_END
 INTEGER(KIND=JPIM) :: IGPTROFF(NGPBLKS)
+character(len=25) :: s1,s2,s3,str
 
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE_BAR
 
@@ -542,7 +547,8 @@ ENDIF
 !   ENDDO
 !ENDIF
 
-print *,'Starting receive reqset ',recv_id(1)
+!pcombufr = 0
+!print *,'Starting receive reqset ',recv_id(1)
 CALL PT_REQSET_START(RECV_ID(1),STATUS)
 
 IF(.NOT.LGPNORM)THEN
@@ -922,7 +928,7 @@ ENDDO
 !
 !ENDDO
 
-print *,'Starting send reqset ',send_id(1)
+!print *,'Starting send reqset ',send_id(1)
 CALL PT_REQSET_START(SEND_ID(1))
 
 
@@ -932,11 +938,22 @@ IF(.NOT. LUSE_WAITANY) THEN
    CALL PT_REQSET_WAIT(RECV_ID(1))
 ENDIF
 
+!if(myproc .eq. 1) then
+!   print *,myproc,': knrecv=',knrecv
+!endif
+
+
+
 DO JNR=1,KNRECV
 
 !   
 IF(LUSE_WAITANY) THEN
    CALL PT_REQSET_WAITANY(RECV_ID(1),INR)
+   inr = inr +1
+!   if(inr .gt. knrecv) then
+!      print *,myproc,': INR exceeds knrecv: ',jnr,inr,knrecv
+!   endif
+!   print *,myproc,': Waitany ',jnr,' on request ',recv_id(1), 'inr=',inr
 ELSE
    INR = JNR
 ENDIF
@@ -953,11 +970,30 @@ ENDIF
 !          & KTAG=ITAG,CDSTRING='TRGTOL_COMM: BLOCKING RECV' )
 !  ENDIF
 
-  IRECV=KRECV(INR)
-  ILEN = KRECVTOT(IRECV)/KF_FS
+
+IRECV=KRECV(INR)
   IRECV_FLD_START = PCOMBUFR(-1,INR)
   IRECV_FLD_END   = PCOMBUFR(0,INR)
-!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JL,II,JFLD)
+
+#ifdef DEBUG_COMM
+s1 = 'pcombufr.'
+write(s2,9) istep,myproc-1,inr
+9 format(i0,'.',i0,'.',i0)
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+   do ii=1,krecvtot(irecv)
+      write(11,10) ii,pcombufr(ii,inr)
+   enddo
+
+10 format(i8,F22.8)
+   close(11)
+#endif
+
+
+  !  print *,myproc,': inr, irecv,irecv_fld_start, irecv_fld_end=',inr,irecv,irecv_fld_start,irecv_fld_end
+  ILEN = KRECVTOT(IRECV)/KF_FS
+  !$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JL,II,JFLD)
   DO JFLD=IRECV_FLD_START,IRECV_FLD_END
     DO JL=1,ILEN
       II = KINDEX(KNDOFF(IRECV)+JL)
@@ -966,9 +1002,12 @@ ENDIF
   ENDDO
 !$OMP END PARALLEL DO
   IPOS = ILEN*(IRECV_FLD_END-IRECV_FLD_START+1)
+
 ENDDO
 
-!CALL PT_REQSET_WAIT(SEND_ID(1))
+CALL PT_REQSET_WAIT(SEND_ID(1))
+istep = istep +1
+
 
 !IF (NTRANS_SYNC_LEVEL <= 1) THEN
 !   IF(KNSEND > 0) THEN

@@ -19,7 +19,6 @@ typedef enum pt_request_set_flags_e {
  * is completed and unregistered, return an index equal to the number of requests in the reqset.
  */
 int pt_reqset_waitany(int gid, int *idx, MPI_Status *status);
-void pt_reqset_waitany_f(int gid, int* idx, int* ierr);
 /**
  * Test is one of the reqset requests has completed. Return -1 in idx if no request has completed, the index
  * of the request in the registered reqset as well as it's status (if not MPI_STATUS_IGNORE) if completed requests
@@ -31,13 +30,11 @@ int pt_reqset_testany(int gid, int *idx, MPI_Status *status);
  * Wait until all requests of the reqset have completed. Copy the status if requested.
  */
 int pt_reqset_wait(int gid, MPI_Status *statuses);
-void pt_reqset_wait_f(int* gid, int *ierr);  /* , int* statuses_f) */
 /**
  * Check if all the requests in the reqset have completed. If yes, set the flag to 1, unregister the reqset
  * and return the statuses if requested.
  */
 int pt_reqset_test(int gid, int* flag, MPI_Status* statuses);
-void pt_reqset_test_f(int* gid, int* flag, int *ierr) ;   /* , int* statuses_f)  */
 /**
  * Start the reqset corresponding to the provided gid.
  */
@@ -50,8 +47,5 @@ int pt_reqset_unregister(int* gid);
  * Register an array of request as a reqset. The reqset will remain inactive until a pt_reqset_start is called.
  */
 int pt_reqset_register(int count, MPI_Request* array_of_requests, int flags, int* gid);
-
-void start_MPI_helper(void);
-  void stop_MPI_helper(void);
 
 #endif  /* PROGRESS_HELPER_HEADER_HAS_BEEN_INCLUDED */
