@@ -8,6 +8,8 @@
 ! nor does it submit to any jurisdiction.
 !
 
+!#define NONPERSISTENT
+
 MODULE DIR_TRANS_CTL_MOD
 
 USE PARKIND1,          ONLY: JPIM, JPRB
@@ -307,30 +309,39 @@ END SUBROUTINE DIR_TRANS_CTL
     INTEGER(KIND=JPIM) :: IST,IEN,IERR,REQ_TMP(1),dest,FLG
     INTEGER(KIND=JPIM) :: ILENS(NPRTRW),IOFFS(NPRTRW),ILENR(NPRTRW),IOFFR(NPRTRW)
 
-    FLG = 0;
     
-    DO J=1,NPRTRW
-       ILENS(J) = D%NLTSGTB(J)*KFIELD
-       IOFFS(J) = D%NSTAGT1B(D%MSTABF(J))*KFIELD
-       ILENR(J) = D%NLTSFTB(J)*KFIELD
-       IOFFR(J) = D%NSTAGT1B(J)*KFIELD
-    ENDDO
+#if 0    
+!#ifndef NONPERSISTENT
+!    FLG = 3
+!#else
 
-!    IF(THIS%STAGE .EQ. 1) THEN
+!#endif
+
+    !    IF(THIS%STAGE .EQ. 1) THEN
        NREQ = KNSEND
        DO INS=1,NREQ
           ISEND = KSEND(INS)
           dest = nprcids(isend) -1
           CALL MPI_SEND_INIT(PCOMBUFS(:,INS), KSENDTOT(ISEND),MPI_REAL, &
-                    &                 dest, MTAGGL, MPI_COMM_WORLD, IREQ_SEND(INS),IERR)
+               &                 dest, MTAGGL, MPI_COMM_WORLD, IREQ_SEND(INS),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_SEND,FLG,SEND_ID(1),STATUS)
        print *,'Registered send reqset ',send_id(1)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
+#endif
        
  !   ELSE
+#ifndef NONPERSISTENT
+
+       FLG = 2
+       DO J=1,NPRTRW
+          ILENS(J) = D%NLTSGTB(J)*KFIELD
+          IOFFS(J) = D%NSTAGT1B(D%MSTABF(J))*KFIELD
+          ILENR(J) = D%NLTSFTB(J)*KFIELD
+          IOFFR(J) = D%NSTAGT1B(J)*KFIELD
+       ENDDO
        NREQ = 1
        CALL MPIX_ALLTOALLV_INIT(FOUBUF_IN,ILENS,IOFFS,MPI_REAL,FOUBUF, &
             &                  ILENR,IOFFR, MPI_REAL, MPL_ALL_MS_COMM,MPI_INFO_NULL,A2AREQ,IERR )
@@ -342,7 +353,7 @@ END SUBROUTINE DIR_TRANS_CTL
        ENDIF
 !       THIS%RECV_ID(2) = THIS%SEND_ID(2)
 !    ENDIF
-
+#endif
 
   END SUBROUTINE INIT_SENDS
 
@@ -364,24 +375,26 @@ END SUBROUTINE DIR_TRANS_CTL
     INTEGER INR, IRECV,NREQ,STATUS
     INTEGER(KIND=JPIM) :: IST,IEN,IERR,SRC,FLG
 
-    FLG = 8
-
+#ifndef NONPERSISTENT
+    FLG = 10
     
 !    IF(THIS%STAGE .EQ. 1) THEN
-       NREQ = KNRECV
-       DO INR=1,NREQ
-          IRECV = KRECV(INR)
-          src = nprcids(irecv) -1
-          CALL MPI_RECV_INIT(PCOMBUFR(:,INR), &
-                    &                 KRECVTOT(IRECV),MPI_REAL, &
-                    &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
-       ENDDO
-       CALL PT_REQSET_REGISTER(NREQ,IREQ_RECV,FLG,RECV_ID(1),STATUS)
-!       print *,'Registered receive reqset ',recv_id(1)
-       IF(STATUS .EQ. MPI_ERR_ARG) THEN
-          PRINT *,'Error in pt_reqset, INIT_RECVS'
-       ENDIF
-!    ENDIF
+    NREQ = KNRECV
+    DO INR=1,NREQ
+       IRECV = KRECV(INR)
+       src = nprcids(irecv) -1
+       CALL MPI_RECV_INIT(PCOMBUFR(:,INR), &
+            &                 KRECVTOT(IRECV),MPI_REAL, &
+            &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
+       
+    ENDDO
+    CALL PT_REQSET_REGISTER(NREQ,IREQ_RECV,FLG,RECV_ID(1),STATUS)
+    print *,'Registered receive reqset ',recv_id(1), ' with flag ',flg
+    IF(STATUS .EQ. MPI_ERR_ARG) THEN
+       PRINT *,'Error in pt_reqset, INIT_RECVS'
+    ENDIF
+    !    ENDIF
+#endif
 
   END SUBROUTINE INIT_RECVS
 

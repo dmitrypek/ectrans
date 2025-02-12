@@ -9,6 +9,7 @@
 !
 
 !#define DEBUG_COMM
+!#define NONPERSISTENT
 
 MODULE TRGTOL_MOD
 
@@ -66,7 +67,8 @@ USE TPM_TRANS       ,ONLY : NGPBLKS
 IMPLICIT NONE
 
 INTEGER(KIND=JPIM),INTENT(IN) :: KSENDCOUNT,KNSEND,KRECVCOUNT,KNRECV
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP,SEND_ID(2),RECV_ID(2)
+INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
+INTEGER(KIND=JPIM),INTENT(INOUT) :: SEND_ID(2),RECV_ID(2)
 REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
 INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
@@ -277,7 +279,8 @@ USE TPM_TRANS ,ONLY : NGPBLKS
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP,SEND_ID(2),RECV_ID(2)
+INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
+INTEGER(KIND=JPIM),INTENT(INOUT) :: SEND_ID(2),RECV_ID(2)
 REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
 INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
@@ -350,7 +353,8 @@ USE TPM_TRANS ,ONLY : NGPBLKS
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP,SEND_ID(2),RECV_ID(2)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: SEND_ID(2),RECV_ID(2)
+INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
 REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
 INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
@@ -459,11 +463,13 @@ USE TPM_TRANS       ,ONLY : LDIVGP, LGPNORM, LSCDERS, LUVDER, LVORGP, NGPBLKS
 USE PE2SET_MOD      ,ONLY : PE2SET
 USE ABORT_TRANS_MOD ,ONLY : ABORT_TRANS
 USE PROGRESS_THREAD
+USE MPI
 !
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP,SEND_ID(2),RECV_ID(2)
+INTEGER(KIND=JPIM),INTENT(IN) :: KF_FS,KF_GP
+INTEGER(KIND=JPIM),INTENT(INOUT) :: SEND_ID(2),RECV_ID(2)
 REAL(KIND=JPRB),INTENT(OUT)   :: PGLAT(D%NLENGTF,KF_FS)
 INTEGER(KIND=JPIM),INTENT(IN) :: KVSET(KF_GP)
 INTEGER(KIND=JPIM),INTENT(IN) :: KF_SCALARS_G
@@ -502,8 +508,8 @@ LOGICAL   :: LLUV(KF_GP),LLGP2(KF_GP),LLGP3A(KF_GP),LLGP3B(KF_GP)
 !     LOCAL INTEGER SCALARS
 INTEGER(KIND=JPIM) :: IFIRST, ILAST, ILEN, IPOS, ISETA, ISETB, IRECV, ISETV
 INTEGER(KIND=JPIM) :: ISEND, ITAG, JBLK, JFLD, JK, JL, IFLD, II, IFLDS, INS
-INTEGER(C_INT) :: INR
-INTEGER(KIND=JPIM) :: JJ,JI,IFLDT, J,STATUS
+INTEGER(C_INT) :: INR,flag
+INTEGER(KIND=JPIM) :: JJ,JI,IFLDT, J,STATUS,ierr
 
 INTEGER(KIND=JPIB) :: JFLD64
 
@@ -536,19 +542,25 @@ ELSE
    CALL GSTATS(804,0)
 ENDIF
 
+#ifdef NONPERSISTENT
 !IF (NTRANS_SYNC_LEVEL <= 0) THEN
 !   !  Receive loop.........................................................
-!   DO INR=1,KNRECV
-!      IRECV=KRECV(INR)
-!      CALL MPL_RECV(PCOMBUFR(-1:KRECVTOT(IRECV),INR), &
+   DO INR=1,KNRECV
+      IRECV=KRECV(INR)
+      call mpi_irecv(pcombufr(-1:krecvtot(irecv),inr), krecvtot(irecv)+2,mpi_real, &
+           &    nprcids(irecv)-1,itag,mpi_comm_world,ireq_recv(inr),ierr)
+      !      CALL MPL_RECV(PCOMBUFR(-1:KRECVTOT(IRECV),INR), &
 !           & KSOURCE=NPRCIDS(IRECV), &
 !           & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ_RECV(INR), &
 !           & KTAG=ITAG,CDSTRING='TRGTOL_COMM: NON-BLOCKING IRECV' )
-!   ENDDO
+   ENDDO
 !ENDIF
-
+   flag = 11
+   call pt_reqset_register(knrecv, ireq_recv, flag, recv_id(1),ierr)
+   
+#endif
 !pcombufr = 0
-!print *,'Starting receive reqset ',recv_id(1)
+print *,'Starting receive reqset ',recv_id(1)
 CALL PT_REQSET_START(RECV_ID(1),STATUS)
 
 IF(.NOT.LGPNORM)THEN
@@ -911,12 +923,13 @@ DO INS=1,KNSEND
     ENDDO
   ENDDO
 !$OMP END DO
-ENDDO
-!$OMP END PARALLEL
 
+!#ifdef NONPERSISTENT
 !DO INS=1,KNSEND
 !  ISEND=KSEND(INS)
-!  IF (NTRANS_SYNC_LEVEL <= 1) THEN
+  call mpi_isend(pcombufs(-1:ksendtot(isend),ins),ksendtot(isend)+2,mpi_real,nprcids(isend)-1,itag, &
+       &          mpi_comm_world,ireq_send(ins),ierr)
+  !  IF (NTRANS_SYNC_LEVEL <= 1) THEN
 !     CALL MPL_SEND(PCOMBUFS(-1:KSENDTOT(ISEND),INS),KDEST=NPRCIDS(ISEND), &
 !          & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ_SEND(INS), &
 !          & KTAG=ITAG,CDSTRING='TRGTOL_COMM: NON-BLOCKING ISEND' )
@@ -928,8 +941,15 @@ ENDDO
 !
 !ENDDO
 
+ENDDO
+!$OMP END PARALLEL
+
+    flag = 3
+    call pt_reqset_register(knsend, ireq_send, flag, send_id(1),ierr)
+!#endif
+    
 !print *,'Starting send reqset ',send_id(1)
-CALL PT_REQSET_START(SEND_ID(1))
+    CALL PT_REQSET_START(SEND_ID(1))
 
 
 !  Unpack loop.........................................................
@@ -948,12 +968,13 @@ DO JNR=1,KNRECV
 
 !   
 IF(LUSE_WAITANY) THEN
+   print *,myproc,': Waitany ',jnr,' on request ',recv_id(1)  ! , 'inr=',inr
    CALL PT_REQSET_WAITANY(RECV_ID(1),INR)
    inr = inr +1
 !   if(inr .gt. knrecv) then
 !      print *,myproc,': INR exceeds knrecv: ',jnr,inr,knrecv
 !   endif
-!   print *,myproc,': Waitany ',jnr,' on request ',recv_id(1), 'inr=',inr
+!
 ELSE
    INR = JNR
 ENDIF
