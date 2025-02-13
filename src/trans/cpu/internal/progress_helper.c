@@ -13,6 +13,13 @@
 #include <stdatomic.h>
 #include "progress_helper.h"
 
+#include <sys/syscall.h>
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
+
 /* User configuration */
 static bool verbose = false;  /* be quiet or verbose */
 int read_counters = 1;  /* Non-zero to activate the counters */
