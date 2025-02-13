@@ -13,6 +13,13 @@
 #include <stdatomic.h>
 #include "progress_helper.h"
 
+#include <sys/syscall.h>
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid)) 
+
 /* User configuration */
 static bool verbose = false;  /* be quiet or verbose */
 int read_counters = 1;  /* Non-zero to activate the counters */
@@ -501,7 +508,7 @@ static int pt_reqset_copy_status(pt_reqset_t* rset, MPI_Status* statuses)
     return MPI_SUCCESS;
 }
 
-int pt_reqset_test(int gid, int* flag, MPI_Status* statuses)
+void pt_reqset_test(int gid, int* flag, MPI_Status* statuses) 
 {
     pt_reqset_t* rset;
 
@@ -509,9 +516,9 @@ int pt_reqset_test(int gid, int* flag, MPI_Status* statuses)
     *flag = 0;
     if( rset->flags & PT_REQSET_COMPLETED ) {
         *flag = 1;
-        return pt_reqset_copy_status(rset, statuses);
+        return;  pt_reqset_copy_status(rset, statuses); 
     }
-    return MPI_SUCCESS;
+    return MPI_SUCCESS; 
 }
 
 int pt_reqset_wait(int gid, MPI_Status* statuses)
@@ -525,7 +532,7 @@ int pt_reqset_wait(int gid, MPI_Status* statuses)
         nanosleep(&ts, NULL);
     }
     if( rset->flags & PT_REQSET_COMPLETED ) {
-        return pt_reqset_copy_status(rset, statuses);
+      return pt_reqset_copy_status(rset, statuses); 
     }
     return MPI_SUCCESS;
 }
