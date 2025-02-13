@@ -65,7 +65,8 @@ list( APPEND ectrans_common_src
   internal/sump_trans_preleg_mod.F90
   external/get_current.F90
   external/setup_trans0.F90
-  internal/mpi_helper.c
+  internal/progress_helper.c
+  internal/progress_helper_wrapper.F90
   ${CMAKE_CURRENT_BINARY_DIR}/internal/ectrans_version_mod.F90
 )
 list( APPEND ectrans_common_includes
