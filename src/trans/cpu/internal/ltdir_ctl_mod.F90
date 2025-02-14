@@ -25,7 +25,7 @@ MODULE LTDIR_CTL_MOD
     
     CALL GSTATS(153,0)
 !    CALL TRLTOM_SEND(FOUBUF_IN(IST:IEN),FOUBUF(IST:IEN),2*KF_FS,A2AREQ,ILENS,ILENR,IOFFS,IOFFR)
-    print *,'Starting request set ',sendid
+!    print *,'Starting request set ',sendid
     CALL PT_REQSET_START(SENDID,STATUS)
     IF(STATUS .EQ. MPI_ERR_ARG) THEN
        PRINT *,'ERROR STATUS IN LTDIR_CTL_SEND'

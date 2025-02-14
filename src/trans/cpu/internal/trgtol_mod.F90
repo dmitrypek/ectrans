@@ -679,7 +679,7 @@ DO INS=1,KNSEND
 ENDDO
 !$OMP END PARALLEL
 
-print *,'Starting request set ',send_id
+!print *,'Starting request set ',send_id
 CALL PT_REQSET_START(SEND_ID,STATUS)
 if(STATUS .EQ. MPI_ERR_ARG) THEN
    PRINT *,'Error in pt_reqset, trgtol'

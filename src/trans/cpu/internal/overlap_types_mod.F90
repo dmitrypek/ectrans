@@ -218,7 +218,7 @@ CONTAINS
                     &                 dest, MTAGGL, MPI_COMM_WORLD, IREQ_SEND(INS),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_SEND,FLG,SEND_ID(1),STATUS)
-       print *,'Registered set ',this%send_id,', stage 1'
+!       print *,'Registered set ',this%send_id,', stage 1'
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -234,7 +234,7 @@ CONTAINS
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
-       print *,'Registered set ',this%send_id,', stage 2'
+!       print *,'Registered set ',this%send_id,', stage 2'
 !       THIS%RECV_ID(2) = THIS%SEND_ID(2)
 !    ENDIF
 
