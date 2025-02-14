@@ -33,7 +33,6 @@ interface
     subroutine pt_reqset_wait_f(gid, ierr) bind(C, name='pt_reqset_wait_f')
         import
         integer(C_INT), INTENT(IN) :: gid
-!        integer(C_INT), INTENT(OUT) :: mpistatuses(:)
         integer(C_INT), INTENT(OUT) :: ierr
     end subroutine pt_reqset_wait_f
 
@@ -50,6 +49,7 @@ contains
 
     subroutine pt_reqset_wait(gid, mpistatuses, ierr)
         integer(C_INT), INTENT(IN) :: gid
+
         integer(C_INT), OPTIONAL, INTENT(OUT) :: ierr,mpistatuses(:)
         integer(C_INT) :: c_err
 
@@ -64,7 +64,8 @@ contains
         integer(C_INT) :: c_err
 
         call pt_reqset_test_f(gid, flag, c_err)
-!        if(present(ierr)) ierr = c_err
+        if(present(ierr)) ierr = c_err
+
     end subroutine pt_reqset_test
 
 end module progress_thread
