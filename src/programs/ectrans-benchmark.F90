@@ -934,9 +934,9 @@ do i = 1, tcount - 1
    end select
 end do
 
-if(myproc .eq. 1) then
+!if(myproc .eq. 1) then
    allocate(gt_comm(3,2,num_batches,nproc),gt_comp(2,2,num_batches,nproc))
-endif
+!endif
 
 call mpi_gather(t_comm,6*num_batches,MPI_DOUBLE_PRECISION,gt_comm,6*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
 call mpi_gather(t_comp,4*num_batches,MPI_DOUBLE_PRECISION,gt_comp,4*num_batches,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,ierr)
