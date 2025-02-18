@@ -113,15 +113,15 @@ IF(NPROC > 1) THEN
 !   CALL MPL_BARRIER(CDSTRING='TRLTOM:')
 ! ENDIF
 
-  call mpi_ialltoallv(pfbuf_in,ilens,ioffs,mpi_real,pfbuf,ilenr,ioffr,mpi_real, &
-       & mpl_all_ms_comm,nreq,ierr)
-  req_tmp(1) =  nreq
-  flg = 3
-  CALL PT_REQSET_REGISTER(1,REQ_TMP,flg,SEND_ID,ierr)
+!  call mpi_ialltoallv(pfbuf_in,ilens,ioffs,mpi_real,pfbuf,ilenr,ioffr,mpi_real, &
+!       & mpl_all_ms_comm,nreq,ierr)
+!  req_tmp(1) =  nreq
+!  flg = 3
+!  CALL PT_REQSET_REGISTER(1,REQ_TMP,flg,SEND_ID,ierr)
 
-!  CALL MPL_ALLTOALLV(PSENDBUF=PFBUF_IN,KSENDCOUNTS=ILENS,&
-!   & PRECVBUF=PFBUF,KRECVCOUNTS=ILENR,KSENDDISPL=IOFFS,KRECVDISPL=IOFFR,&
-!   & KCOMM=MPL_ALL_MS_COMM,CDSTRING='TRLTOM:')
+  CALL MPL_ALLTOALLV(PSENDBUF=PFBUF_IN,KSENDCOUNTS=ILENS,&
+   & PRECVBUF=PFBUF,KRECVCOUNTS=ILENR,KSENDDISPL=IOFFS,KRECVDISPL=IOFFR,&
+   & KCOMM=MPL_ALL_MS_COMM,CDSTRING='TRLTOM:')
 !Faster on Cray - because of peculiarity of their MPICH
 ! CALL MPL_ALLTOALLV(PSENDBUF=PFBUF_IN,KSENDCOUNTS=ILENS,&
 !  & PRECVBUF=PFBUF,KRECVCOUNTS=ILENR,KSENDDISPL=IOFFS,KRECVDISPL=IOFFR,&
