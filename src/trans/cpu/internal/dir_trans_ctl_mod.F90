@@ -384,7 +384,7 @@ END SUBROUTINE DIR_TRANS_CTL
        IRECV = KRECV(INR)
        src = nprcids(irecv) -1
        CALL MPI_RECV_INIT(PCOMBUFR(:,INR), &
-            &                 KRECVTOT(IRECV),MPI_REAL, &
+            &                 KRECVTOT(IRECV)+2,MPI_REAL, &
             &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
        
     ENDDO
