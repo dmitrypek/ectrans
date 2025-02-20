@@ -8,7 +8,7 @@
 ! nor does it submit to any jurisdiction.
 !
 
-!#define NONPERSISTENT
+#define NONPERSISTENT
 
 MODULE DIR_TRANS_CTL_MOD
 
@@ -326,7 +326,7 @@ END SUBROUTINE DIR_TRANS_CTL
                &                 dest, MTAGGL, MPI_COMM_WORLD, IREQ_SEND(INS),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,IREQ_SEND,FLG,SEND_ID(1),STATUS)
-       print *,'Registered send reqset ',send_id(1)
+!       print *,'Registered send reqset ',send_id(1)
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -383,13 +383,14 @@ END SUBROUTINE DIR_TRANS_CTL
     DO INR=1,NREQ
        IRECV = KRECV(INR)
        src = nprcids(irecv) -1
+!       print *,'Receiving ',krecvtot(irecv)+2,' from ',src
        CALL MPI_RECV_INIT(PCOMBUFR(:,INR), &
-            &                 KRECVTOT(IRECV),MPI_REAL, &
+            &                 KRECVTOT(IRECV)+2,MPI_REAL, &
             &                 src, MTAGGL, MPI_COMM_WORLD, IREQ_RECV(INR),IERR)
        
     ENDDO
     CALL PT_REQSET_REGISTER(NREQ,IREQ_RECV,FLG,RECV_ID(1),STATUS)
-    print *,'Registered receive reqset ',recv_id(1), ' with flag ',flg
+!    print *,'Registered receive reqset ',recv_id(1), ' with flag ',flg
     IF(STATUS .EQ. MPI_ERR_ARG) THEN
        PRINT *,'Error in pt_reqset, INIT_RECVS'
     ENDIF

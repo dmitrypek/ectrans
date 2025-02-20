@@ -8,7 +8,7 @@
 ! nor does it submit to any jurisdiction.
 !
 
-!#define NONPERSISTENT
+#define NONPERSISTENT
 
 MODULE LTDIR_CTL_MOD
 CONTAINS

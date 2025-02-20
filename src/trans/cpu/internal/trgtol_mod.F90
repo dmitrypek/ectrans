@@ -9,7 +9,7 @@
 !
 
 !#define DEBUG_COMM
-!#define NONPERSISTENT
+#define NONPERSISTENT
 
 MODULE TRGTOL_MOD
 
@@ -560,7 +560,7 @@ ENDIF
    
 #endif
 !pcombufr = 0
-print *,'Starting receive reqset ',recv_id(1)
+!print *,'Starting receive reqset ',recv_id(1)
 CALL PT_REQSET_START(RECV_ID(1),STATUS)
 
 IF(.NOT.LGPNORM)THEN
@@ -927,6 +927,7 @@ DO INS=1,KNSEND
 !#ifdef NONPERSISTENT
 !DO INS=1,KNSEND
 !  ISEND=KSEND(INS)
+!  print *,'Sending ',ksendtot(isend)+2,' to ',nprcids(isend)-1
   call mpi_isend(pcombufs(-1:ksendtot(isend),ins),ksendtot(isend)+2,mpi_real,nprcids(isend)-1,itag, &
        &          mpi_comm_world,ireq_send(ins),ierr)
   !  IF (NTRANS_SYNC_LEVEL <= 1) THEN
@@ -968,7 +969,7 @@ DO JNR=1,KNRECV
 
 !   
 IF(LUSE_WAITANY) THEN
-   print *,myproc,': Waitany ',jnr,' on request ',recv_id(1)  ! , 'inr=',inr
+!   print *,myproc,': Waitany ',jnr,' on request ',recv_id(1)  ! , 'inr=',inr
    CALL PT_REQSET_WAITANY(RECV_ID(1),INR)
    inr = inr +1
 !   if(inr .gt. knrecv) then
