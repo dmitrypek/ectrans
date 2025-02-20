@@ -51,6 +51,7 @@ use oml_mod ,only : oml_max_threads
 use mpl_module
 use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : dr_hook_init
+use progress_thread
 
 implicit none
 
@@ -136,6 +137,8 @@ logical :: lscders = .false.
 logical :: luvders = .false.
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
+logical :: luse_progress_thread = .false.
+logical :: luse_waitany = .false.
 
 integer(kind=jpim) :: nstats_mem = 0
 integer(kind=jpim) :: ntrace_stats = 0
@@ -231,7 +234,8 @@ luse_mpi = detect_mpirun()
 
 ! Setup
 call get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
-  & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck)
+     & luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, lmeminfo, nprtrv, nprtrw, ncheck, &
+      & luse_progress_thread, luse_waitany)
 if (cgrid == '') cgrid = cubic_octahedral_gaussian_grid(nsmax)
 call parse_grid(cgrid, ndgl, nloen)
 nflevg = nlev
@@ -249,6 +253,10 @@ else
   lsync_trans = .false.
 endif
 nthread = oml_max_threads()
+
+if (luse_progress_thread) then
+  call start_MPI_helper
+endif
 
 call dr_hook_init()
 
@@ -686,7 +694,7 @@ do jstep = 1, iters+iters_warmup
       & pspsc3a=zspsc3a,                    &
       & kvsetuv=ivset,                      &
       & kvsetsc2=ivsetsc,                   &
-      & kvsetsc3a=ivset)
+      & kvsetsc3a=ivset,luse_waitany=luse_waitany)
   else
     call dir_trans(kresol=1, kproma=nproma, &
       & pgp2=zgmvs(:,1:1,:),                &
@@ -694,7 +702,7 @@ do jstep = 1, iters+iters_warmup
       & pspsc2=zspsc2,                      &
       & pspsc3a=zspsc3a,                    &
       & kvsetsc2=ivsetsc,                   &
-      & kvsetsc3a=ivset)
+      & kvsetsc3a=ivset,luse_waitany=luse_waitany)
   endif
   call gstats(5,1)
   ztstep2(jstep) = (timef() - ztstep2(jstep))/1000.0_jprd
@@ -737,12 +745,12 @@ do jstep = 1, iters+iters_warmup
           zerr(4) = abs(znormt1(ifld)/znormt(ifld) - 1.0_jprb)
           zmaxerr(4) = max(zmaxerr(4), zerr(4))
         enddo
-        write(nout,'("time step ",i6," took", f8.4," | zspvor max err="e10.3,&
-                    & " | zspdiv max err="e10.3," | zspsc3a max err="e10.3," | zspsc2 max err="e10.3)') &
+        write(nout,'("time step ",i6," took", f8.4," | zspvor max err="e15.8,&
+                    & " | zspdiv max err="e15.8," | zspsc3a max err="e15.8," | zspsc2 max err="e15.8)') &
                     &  jstep, ztstep(jstep), zmaxerr(3), zmaxerr(2), zmaxerr(4), zmaxerr(1)
       else
-        write(nout,'("time step ",i6," took", f8.4," | zspvor max err="e10.3,&
-                    & " | zspdiv max err="e10.3," | zspsc2 max err="e10.3)') &
+        write(nout,'("time step ",i6," took", f8.4," | zspvor max err="e15.8,&
+                    & " | zspdiv max err="e15.8," | zspsc2 max err="e15.8)') &
                     &  jstep, ztstep(jstep), zmaxerr(3), zmaxerr(2), zmaxerr(1)
       endif
     endif
@@ -775,7 +783,7 @@ if (lprint_norms .or. ncheck > 0) then
       zerr(3) = abs(real(znormvor1(ifld),kind=jprd)/real(znormvor(ifld),kind=jprd) - 1.0_jprd)
       zmaxerr(3) = max(zmaxerr(3), zerr(3))
       if (verbosity >= 1) then
-        write(nout,'("norm zspvor( ",i4,")     = ",f20.15,"        error = ",e10.3)') ifld, znormvor(ifld), zerr(3)
+        write(nout,'("norm zspvor( ",i4,")     = ",f20.15,"        error = ",e15.8)') ifld, znormvor(ifld), zerr(3)
         write(nout,'("0x",Z16.16)') znormvor(ifld)
       endif
     enddo
@@ -783,7 +791,7 @@ if (lprint_norms .or. ncheck > 0) then
       zerr(2) = abs(real(znormdiv1(ifld),kind=jprd)/real(znormdiv(ifld),kind=jprd) - 1.0d0)
       zmaxerr(2) = max(zmaxerr(2),zerr(2))
       if (verbosity >= 1) then
-        write(nout,'("norm zspdiv( ",i4,",:)   = ",f20.15,"        error = ",e10.3)') ifld, znormdiv(ifld), zerr(2)
+        write(nout,'("norm zspdiv( ",i4,",:)   = ",f20.15,"        error = ",e15.8)') ifld, znormdiv(ifld), zerr(2)
         write(nout,'("0x",Z16.16)') znormdiv(ifld)
       endif
     enddo
@@ -792,7 +800,7 @@ if (lprint_norms .or. ncheck > 0) then
         zerr(4) = abs(real(znormt1(ifld),kind=jprd)/real(znormt(ifld),kind=jprd) - 1.0d0)
         zmaxerr(4) = max(zmaxerr(4), zerr(4))
         if (verbosity >= 1) then
-          write(nout,'("norm zspsc3a(",i4,",:,1) = ",f20.15,"        error = ",e10.3)') ifld, znormt(ifld), zerr(4)
+          write(nout,'("norm zspsc3a(",i4,",:,1) = ",f20.15,"        error = ",e15.8)') ifld, znormt(ifld), zerr(4)
           write(nout,'("0x",Z16.16)') znormt(ifld)
         endif
       enddo
@@ -801,7 +809,7 @@ if (lprint_norms .or. ncheck > 0) then
       zerr(1) = abs(real(znormsp1(ifld),kind=jprd)/real(znormsp(ifld),kind=jprd) - 1.0d0)
       zmaxerr(1) = max(zmaxerr(1), zerr(1))
       if (verbosity >= 1) then
-        write(nout,'("norm zspsc2( ",i4,",:)   = ",f20.15,"        error = ",e10.3)') ifld, znormsp(ifld), zerr(1)
+        write(nout,'("norm zspsc2( ",i4,",:)   = ",f20.15,"        error = ",e15.8)') ifld, znormsp(ifld), zerr(1)
         write(nout,'("0x",Z16.16)') znormsp(ifld)
       endif
     enddo
@@ -814,12 +822,12 @@ if (lprint_norms .or. ncheck > 0) then
     endif
 
     if (verbosity >= 1) write(nout,*)
-    write(nout,'("max error zspvor(1:nlev,:)    = ",e10.3)') zmaxerr(3)
-    write(nout,'("max error zspdiv(1:nlev,:)    = ",e10.3)') zmaxerr(2)
-    if (nfld > 0) write(nout,'("max error zspsc3a(1:nlev,:,1) = ",e10.3)') zmaxerr(4)
-    write(nout,'("max error zspsc2(1:1,:)       = ",e10.3)') zmaxerr(1)
+    write(nout,'("max error zspvor(1:nlev,:)    = ",e15.8)') zmaxerr(3)
+    write(nout,'("max error zspdiv(1:nlev,:)    = ",e15.8)') zmaxerr(2)
+    if (nfld > 0) write(nout,'("max error zspsc3a(1:nlev,:,1) = ",e15.8)') zmaxerr(4)
+    write(nout,'("max error zspsc2(1:1,:)       = ",e15.8)') zmaxerr(1)
     write(nout,*)
-    write(nout,'("max error combined =          = ",e10.3)') zmaxerrg
+    write(nout,'("max error combined =          = ",e15.8)') zmaxerrg
     write(nout,*)
   endif
   if (ncheck > 0) then
@@ -960,6 +968,10 @@ if (lmeminfo) then
   write(nout,*)
   call ec_meminfo(nout, "", mpl_comm, kbarr=1, kiotask=-1, &
       & kcall=1)
+endif
+
+if (luse_progress_thread) then
+  call stop_MPI_helper
 endif
 
 !===================================================================================================
@@ -1130,6 +1142,8 @@ subroutine print_help(unit)
   write(nout, "(a)") ""
   write(nout, "(a)") "DEBUGGING"
   write(nout, "(a)") "    --dump-values       Output gridpoint fields in unformatted binary file"
+  write(nout, "(a)") "    --progress-thread   Use a separate progress thread for communication calls"
+  write(nout, "(a)") "    --waitany           Use MPI_Waitany, rather than MPI_Waitall, in trgtol (w/ progress thread)"
   write(nout, "(a)") ""
 
 end subroutine print_help
@@ -1153,8 +1167,8 @@ end subroutine
 
 subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, nlev, lvordiv, lscders, luvders, &
   &                                   luseflt, nopt_mem_tr, nproma, verbosity, ldump_values, lprint_norms, &
-  &                                   lmeminfo, nprtrv, nprtrw, ncheck)
-
+  &                                   lmeminfo, nprtrv, nprtrw, ncheck, &
+  &                                   luse_progress_thread, luse_waitany)
 #ifdef _OPENACC
   use openacc, only: acc_init, acc_get_device_type
 #endif
@@ -1180,7 +1194,7 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
   integer, intent(inout) :: nprtrw          ! Size of W set (spectral decomposition)
   integer, intent(inout) :: ncheck          ! The multiplier of the machine epsilon used as a
                                             ! tolerance for correctness checking
-
+  logical, intent(inout) :: luse_progress_thread,luse_waitany
   character(len=128) :: carg          ! Storage variable for command line arguments
   integer            :: iarg = 1      ! Argument index
 
@@ -1233,8 +1247,10 @@ subroutine get_command_line_arguments(nsmax, cgrid, iters, iters_warmup, nfld, n
       case('--nprtrv'); nprtrv = get_int_value('--nprtrv', iarg)
       case('--nprtrw'); nprtrw = get_int_value('--nprtrw', iarg)
       case('-c', '--check'); ncheck = get_int_value('-c', iarg)
+      case('--progress-thread'); luse_progress_thread = .True.
+      case('--waitany'); luse_waitany = .True.
       case default
-        call parsing_failed("Unrecognised argument: " // trim(carg))
+      call parsing_failed("Unrecognised argument: " // trim(carg))
 
     end select
     iarg = iarg + 1
