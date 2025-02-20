@@ -60,7 +60,7 @@ typedef struct pt_reqset_s {
     MPI_Status*         array_of_statuses;
     /* for management of independently completed requests */
     int                 reported_completion;
-    int                 detected_completion;
+    __sig_atomic_t                 detected_completion;
     int*                idx_completed_reqs;
 } pt_reqset_t;
 
@@ -290,7 +290,7 @@ void* mpi_helper_thread_routine( void* args )
                                  (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : &cmd->array_of_statuses[cmd->detected_completion]);
                     if( 0 != outcount ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
                     }
                     /* Everything done ? */
                     flag = (cmd->detected_completion == cmd->count);  
@@ -299,7 +299,7 @@ void* mpi_helper_thread_routine( void* args )
                                 (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : cmd->array_of_statuses);
                     if( flag ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->count, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->count, memory_order_relaxed);
                     }
                 }
                 if( flag ) {
@@ -522,11 +522,11 @@ int pt_reqset_start(int gid)
 static int pt_reqset_copy_status(pt_reqset_t* rset, MPI_Status* statuses)
 {
     rset->flags ^= PT_REQSET_COMPLETED;
-        /* copy the statuses */
-    /*    if( (MPI_STATUSES_IGNORE != statuses) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
+    if( (MPI_STATUSES_IGNORE != statuses) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
         assert( NULL != rset->array_of_statuses);
+        /* copy the statuses */
         memcpy(statuses, rset->array_of_statuses, rset->count * sizeof(MPI_Status));
-    }*/
+    }
     if( rset->flags & PT_REQSET_NON_PERSISTENT ) {
         int gid = (int)(((uintptr_t)((char*)rset - (char*)&pt_reqset_array[0])) / sizeof(pt_reqset_array[0]));
         /* remove the gid requests set */
@@ -585,14 +585,13 @@ int pt_reqset_waitany(int gid, int* idx, MPI_Status* status)
     if( rset->detected_completion != rset->reported_completion) {
         atomic_thread_fence(memory_order_acquire); /* make sure idx_completed_reqs and array_of_statuses are sound */
         *idx = rset->idx_completed_reqs[rset->reported_completion];
-	/*
         if( MPI_STATUS_IGNORE != status ) {
             *status = rset->array_of_statuses[rset->reported_completion];
-	    }*/
+        }
         rset->reported_completion++;  /* Move to the next completion */
 	if( rset->reported_completion == rset->count ) {
             assert(rset->reported_completion == rset->detected_completion);
-	    pt_reqset_copy_status(rset, MPI_STATUSES_IGNORE  ); /* ignore the status but unregister the reqset */
+            pt_reqset_copy_status(rset, MPI_STATUSES_IGNORE  /* ignore the status but unregister the reqset */);
 	}
         return MPI_SUCCESS;
     }
