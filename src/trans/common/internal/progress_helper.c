@@ -60,7 +60,7 @@ typedef struct pt_reqset_s {
     MPI_Status*         array_of_statuses;
     /* for management of independently completed requests */
     int                 reported_completion;
-    int                 detected_completion;
+    __sig_atomic_t                 detected_completion;
     int*                idx_completed_reqs;
 } pt_reqset_t;
 
@@ -290,7 +290,7 @@ void* mpi_helper_thread_routine( void* args )
                                  (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : &cmd->array_of_statuses[cmd->detected_completion]);
                     if( 0 != outcount ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
                     }
                     /* Everything done ? */
                     flag = (cmd->detected_completion == cmd->count);  
@@ -299,7 +299,7 @@ void* mpi_helper_thread_routine( void* args )
                                 (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : cmd->array_of_statuses);
                     if( flag ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->count, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->count, memory_order_relaxed);
                     }
                 }
                 if( flag ) {
