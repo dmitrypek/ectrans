@@ -561,6 +561,7 @@ ENDIF
 #endif
 !pcombufr = 0
 !print *,'Starting receive reqset ',recv_id(1)
+CALL unpause_mpi_helper()
 CALL PT_REQSET_START(RECV_ID(1),STATUS)
 
 IF(.NOT.LGPNORM)THEN
@@ -1027,6 +1028,7 @@ open(11,file=str,form='formatted',status='unknown',action='write')
 ENDDO
 
 CALL PT_REQSET_WAIT(SEND_ID(1))
+CALL PAUSE_MPI_HELPER()
 istep = istep +1
 
 

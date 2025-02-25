@@ -11,16 +11,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdatomic.h>
-#include <sys/syscall.h>
 #include "progress_helper.h"
-
-#ifdef SYS_gettid
-int gettid() {
-  return(syscall(SYS_gettid));
-}
-#else
-#error "SYS_gettid unavailable on this system"
-#endif
 
 /* User configuration */
 static bool verbose = false;  /* be quiet or verbose */
@@ -60,7 +51,7 @@ typedef struct pt_reqset_s {
     MPI_Status*         array_of_statuses;
     /* for management of independently completed requests */
     int                 reported_completion;
-    int                 detected_completion;
+    __sig_atomic_t                 detected_completion;
     int*                idx_completed_reqs;
 } pt_reqset_t;
 
@@ -72,6 +63,14 @@ typedef struct mpi_helper_s {
     pt_reqset_t        *cq;
     int                 recvint;
     int                 read_files;
+    int                 nothing_happened;  /* keep track of how active theprogress thread is:
+                                            * 0 is active, as the value increases the thread will
+                                            * start yielding resources via nano_sleep. This value
+                                            * will be capped by max_slack.
+                                            */
+    int                 max_slack;          /* when the thread is not busy how long could it go to sleep */
+    int                 be_quiet;           /* temporarily force the progress thread to almost stop */
+    pthread_mutex_t     quiet_mutex;        /* block on this if quiet mode is requested */
 } mpi_helper_t;
 
 static mpi_helper_t* mpi_helper = NULL;
@@ -278,6 +277,7 @@ void* mpi_helper_thread_routine( void* args )
                 active_rsets->prev = cmd;
             }
             assert(cmd->flags & PT_REQSET_ACTIVE);
+            helper->nothing_happened = 0;  /* we now have work to do */
         }
         /* Check the status of active reqsets */
         if( NULL != (cmd = active_rsets) ) {
@@ -290,7 +290,7 @@ void* mpi_helper_thread_routine( void* args )
                                  (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : &cmd->array_of_statuses[cmd->detected_completion]);
                     if( 0 != outcount ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->detected_completion + outcount, memory_order_relaxed);
                     }
                     /* Everything done ? */
                     flag = (cmd->detected_completion == cmd->count);  
@@ -299,7 +299,7 @@ void* mpi_helper_thread_routine( void* args )
                                 (NULL == cmd->array_of_statuses) ? MPI_STATUSES_IGNORE : cmd->array_of_statuses);
                     if( flag ) {
                         atomic_thread_fence(memory_order_release);
-                        atomic_store_explicit(&cmd->detected_completion, cmd->count, memory_order_relaxed);
+                        atomic_store_explicit((_Atomic int*) &cmd->detected_completion, cmd->count, memory_order_relaxed);
                     }
                 }
                 if( flag ) {
@@ -325,15 +325,34 @@ void* mpi_helper_thread_routine( void* args )
                 }  /* otherwise move onto the next cmd */
                 cmd = tmpitem;
             } while (cmd != active_rsets);
+            flag = 0;  /* make sure we dont allow the progress thread to completeand quit */
+        } else {
+            /* No MPI progress this iteration so let's force MPI to do something */
+            MPI_Test(&helper->sync_req, &flag, MPI_STATUS_IGNORE);
+            helper->nothing_happened++;
+            if( helper->nothing_happened > 50 ) {
+                /* Try to slow down if there is nothing to do */
+                struct timespec ts = {.tv_nsec = 1000 * helper->nothing_happened};
+                if( ts.tv_nsec > helper->max_slack ) ts.tv_nsec = helper->max_slack;
+                nanosleep(&ts, NULL);
+            }
         }
-        
-        MPI_Test(&helper->sync_req, &flag, MPI_STATUS_IGNORE);
         if(helper->read_files) {
             now = MPI_Wtime();
             if( (now - last) < read_interval )
                 continue;
             read_files(files_to_read, sizeof(files_to_read)/sizeof(files_to_read_t));
             last = now;
+        }
+        if( helper->be_quiet ) { /* we were asked to pause */
+            /* lock the mutex. As the main thread will own the mutex in quiet mode, this
+             * thread will go to sleep and will only be awaken when the main thread will
+             * release the mutex, aka in unpause. At that moment is should release the 
+             * newly acquired mutex and reset the be_quiet to 0.
+             */
+            pthread_mutex_lock(&helper->quiet_mutex);
+            pthread_mutex_unlock(&helper->quiet_mutex);
+            helper->be_quiet = 0;
         }
     } while( 0 == flag );
 
@@ -376,10 +395,42 @@ int start_MPI_helper(void)
                    &mpi_helper->sync_req);
 
     mpi_helper->cq = NULL;
+    mpi_helper->nothing_happened = 0;
+    mpi_helper->max_slack = 100000;  /* in nano-seconds */
+    mpi_helper->be_quiet = 0;  /* go do your job */
     pthread_mutex_init(&mpi_helper->cq_mutex, NULL);
+    pthread_mutex_init(&mpi_helper->quiet_mutex, NULL);
     rc = pthread_create(&mpi_helper->thread, NULL, mpi_helper_thread_routine, mpi_helper);
     return rc;
 }
+
+int pause_MPI_helper(void)
+{
+    int rc = pthread_mutex_trylock(&mpi_helper->quiet_mutex);
+    if(0 != rc ) {
+        fprintf(stderr, "The quiescence mutex is already blocked. Ignoring the pause command\n");
+        return -1;
+    }
+    mpi_helper->be_quiet = 1;
+    return 0;
+}
+
+int unpause_MPI_helper(int wait)
+{
+    pthread_mutex_unlock(&mpi_helper->quiet_mutex);
+    /* This will eventually release the progress thread, who will then set the be_quiet back to 0
+     * to signal that he is back to work.
+     */
+    if( wait ) {
+        while( mpi_helper->be_quiet ) {
+            struct timespec ts = {.tv_nsec = 1000};
+            /* do something */
+            nanosleep(&ts, NULL);
+        }
+    }
+    return mpi_helper->be_quiet;
+}
+
 
 int stop_MPI_helper(void)
 {
@@ -387,6 +438,9 @@ int stop_MPI_helper(void)
     void* ret;
 
     rc = MPI_Comm_rank(mpi_helper->comm, &my_rank);
+    if (1 == mpi_helper->be_quiet ) {  /* the progress thread is quiet, wake it up. */
+        unpause_MPI_helper(1 /* wait until awake */);
+    }
     /* send the message to complete the helper thread */
     rc = MPI_Send(&rc, 1, MPI_INT, my_rank, 0, mpi_helper->comm);
     /* wait until the helper thread completes */
@@ -516,17 +570,23 @@ int pt_reqset_start(int gid)
     rset->next = mpi_helper->cq;
     pthread_mutex_unlock(&mpi_helper->cq_mutex);
 
+    /* Check the status of the progress thread and make sure it is running,
+     * or nobody will be there to service our requests.
+     */
+    if( 1 == mpi_helper->be_quiet ) {
+        pthread_mutex_unlock(&mpi_helper->quiet_mutex);
+    }
     return MPI_SUCCESS;
 }
 
 static int pt_reqset_copy_status(pt_reqset_t* rset, MPI_Status* statuses)
 {
     rset->flags ^= PT_REQSET_COMPLETED;
-        /* copy the statuses */
-    /*    if( (MPI_STATUSES_IGNORE != statuses) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
+    if( (MPI_STATUSES_IGNORE != statuses) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
         assert( NULL != rset->array_of_statuses);
+        /* copy the statuses */
         memcpy(statuses, rset->array_of_statuses, rset->count * sizeof(MPI_Status));
-    }*/
+    }
     if( rset->flags & PT_REQSET_NON_PERSISTENT ) {
         int gid = (int)(((uintptr_t)((char*)rset - (char*)&pt_reqset_array[0])) / sizeof(pt_reqset_array[0]));
         /* remove the gid requests set */
@@ -585,14 +645,13 @@ int pt_reqset_waitany(int gid, int* idx, MPI_Status* status)
     if( rset->detected_completion != rset->reported_completion) {
         atomic_thread_fence(memory_order_acquire); /* make sure idx_completed_reqs and array_of_statuses are sound */
         *idx = rset->idx_completed_reqs[rset->reported_completion];
-	/*
-        if( MPI_STATUS_IGNORE != status ) {
+        if( (MPI_STATUS_IGNORE != status) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
             *status = rset->array_of_statuses[rset->reported_completion];
-	    }*/
+        }
         rset->reported_completion++;  /* Move to the next completion */
 	if( rset->reported_completion == rset->count ) {
             assert(rset->reported_completion == rset->detected_completion);
-	    pt_reqset_copy_status(rset, MPI_STATUSES_IGNORE  ); /* ignore the status but unregister the reqset */
+            pt_reqset_copy_status(rset, MPI_STATUSES_IGNORE  /* ignore the status but unregister the reqset */);
 	}
         return MPI_SUCCESS;
     }
@@ -612,7 +671,7 @@ int pt_reqset_testany(int gid, int *idx, MPI_Status *status)
     if (rset->detected_completion != rset->reported_completion) {
         atomic_thread_fence(memory_order_acquire); /* make sure idx_completed_reqs and array_of_statuses are sound */
         *idx = rset->idx_completed_reqs[rset->reported_completion];
-        if (MPI_STATUS_IGNORE != status) {
+        if( (MPI_STATUS_IGNORE != status) && !(rset->flags & PT_REQSET_STATUSES_IGNORE) ) {
             *status = rset->array_of_statuses[rset->reported_completion];
         }
         rset->reported_completion++; /* Move to the next completion */
@@ -643,7 +702,7 @@ void pt_reqset_test_f(int* gid, int* flag, int* c_err)
 {
     pt_reqset_t* rset;
     SET_AND_CHECK_REQUEST_SET_ID(*gid, rset, {*c_err = MPI_ERR_ARG; return;});
-    CHECK_ACTIVE_REQSET(rset, gid, "pt_reqset_test", {*c_err = MPI_ERR_ARG; return;});
+    CHECK_ACTIVE_REQSET(rset, *gid, "pt_reqset_test", {*c_err = MPI_ERR_ARG; return;});
     if( rset->flags & PT_REQSET_COMPLETED ) {
     /*
         if( !(rset->flags & PT_REQSET_STATUSES_IGNORE) && (MPI_STATUSES_IGNORE != (MPI_Status*)statuses_f) ) {
@@ -677,7 +736,7 @@ void pt_reqset_wait_f(int* gid, int* c_err)
     int flag;
 
     SET_AND_CHECK_REQUEST_SET_ID(*gid, rset, {*c_err = MPI_ERR_ARG; return;});
-    CHECK_ACTIVE_REQSET(rset, gid, "pt_reqset_test", {*c_err = MPI_ERR_ARG; return;});
+    CHECK_ACTIVE_REQSET(rset, *gid, "pt_reqset_test", {*c_err = MPI_ERR_ARG; return;});
 
     while( !(rset->flags & PT_REQSET_COMPLETED) ) {
         struct timespec ts = {.tv_nsec = 1000};
