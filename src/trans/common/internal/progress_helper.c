@@ -15,7 +15,7 @@
 #include "progress_helper.h"
 
 #ifdef SYS_gettid
-pid_t tid = syscall(SYS_gettid);
+#define gettid() ((pid_t)syscall(SYS_gettid))
 #else
 #error "SYS_gettid unavailable on this system"
 #endif
