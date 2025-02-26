@@ -11,7 +11,14 @@
 #include <stdint.h>
 #include <assert.h>
 #include <stdatomic.h>
+#include <sys/syscall.h>
 #include "progress_helper.h"
+
+#ifdef SYS_gettid
+pid_t tid = syscall(SYS_gettid);
+#else
+#error "SYS_gettid unavailable on this system"
+#endif
 
 /* User configuration */
 static bool verbose = false;  /* be quiet or verbose */
