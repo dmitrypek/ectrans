@@ -167,7 +167,7 @@ CALL GSTATS(1805,1)
 
 END SUBROUTINE TRGTOL_PROLOG
 
-SUBROUTINE TRGTOL_COMM_SEND(PGLAT,PCOMBUFS,IOFFSEND,KF_FS,KF_GP,KF_SCALARS_G,KVSET,&
+SUBROUTINE TRGTOL_COMM_SEND(PGLAT,PCOMBUFS,IOFFSEND,IOFFRECV,kreq_recv,KF_FS,KF_GP,KF_SCALARS_G,KVSET,&
  & KSENDCOUNT,KRECVCOUNT,KNSEND,KNRECV,KSENDTOT,KRECVTOT,KSEND,KRECV,KINDEX,KNDOFF,SEND_ID,KGPTRSEND,&
  & KPTRGP,PGP,PGPUV,PGP3A,PGP3B,PGP2)
 
@@ -264,8 +264,8 @@ INTEGER(KIND=JPIM), INTENT(IN) :: KGPTRSEND(2,NGPBLKS,NPRTRNS)
 REAL(KIND=JPRB), INTENT(INOUT) :: PCOMBUFS(:,:)
 !REAL(KIND=JPRB), INTENT(INOUT) :: PCOMBUFR(:,:)
 INTEGER(KIND=JPIM), INTENT(IN) :: IOFFSEND
-!INTEGER(KIND=JPIM), INTENT(IN) :: IOFFRECV
-!INTEGER(KIND=JPIM), INTENT(INOUT) :: KREQ_RECV(:)
+INTEGER(KIND=JPIM), INTENT(IN) :: IOFFRECV
+INTEGER(KIND=JPIM), INTENT(INOUT) :: KREQ_RECV(:)
 INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
 REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGP(:,:,:)
 REAL(KIND=JPRB),OPTIONAL,INTENT(IN)     :: PGPUV(:,:,:,:)
@@ -593,6 +593,7 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
 
 ENDIF
 
+pcombufs = -2
 
 ! Now overlapping buffer packing/unpacking with sends/waits
 ! Time as if all communications to avoid double accounting
@@ -678,8 +679,7 @@ DO INS=1,KNSEND
 !$OMP END DO
 ENDDO
 !$OMP END PARALLEL
-
-print *,'Starting request set ',send_id
+print *,'Starting send request set ',send_id
 CALL PT_REQSET_START(SEND_ID,STATUS)
 if(STATUS .EQ. MPI_ERR_ARG) THEN
    PRINT *,'Error in pt_reqset, trgtol'
@@ -719,12 +719,19 @@ INTEGER(KIND=JPIM) :: JNR, INR, IRECV, ILEN, JL, II, JFLD
 
 !  Unpack loop.........................................................
 
+print *,'krecvcount,ioffrecv,krecvtot=',krecvcount,ioffrecv,krecvtot
 DO JNR = 1, KNRECV
   IRECV = KRECV(JNR)
   ILEN = KRECVTOT(IRECV) / KF_FS
-!$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JL,II,JFLD)
+!  if(ILEN * KF_FS + ioffrecv -1 > krecvcount) then
+!     print *,'Warning: pcombufr range is abpout to be exceeded',ilen,krecvcount,jnr,irecv
+!  endif
+  !$OMP PARALLEL DO SCHEDULE(STATIC) PRIVATE(JL,II,JFLD)
   DO JFLD = 1, KF_FS
      DO JL = 1, ILEN
+!        if(jfld .eq. kf_fs) then
+!           print *,'JL=',JL, 'ILEN=',ILEN
+!        endif
         II = KINDEX(KNDOFF(IRECV)+JL)
         PGLAT(II,JFLD) = PCOMBUFR(IOFFRECV+JL+(JFLD-1)*ILEN-1,JNR)
     ENDDO
