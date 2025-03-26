@@ -119,7 +119,7 @@ logical :: lstats_omp = .false.
 logical :: lstats_comms = .false.
 logical :: lbarrier_stats = .false.
 logical :: lbarrier_stats2 = .false.
-logical :: ldetailed_stats = .false.
+logical :: ldetailed_stats = .true.
 logical :: lstats_alloc = .false.
 logical :: lsyncstats = .false.
 logical :: lstatscpu = .false.
@@ -667,6 +667,8 @@ do jstep = 1, iters+2
   ! Do direct transform
   !=================================================================================================
 
+  zspscalar = 0.0
+  
   ztstep2(jstep) = timef()
 
   call mpi_barrier(mpi_comm_world,ierr)

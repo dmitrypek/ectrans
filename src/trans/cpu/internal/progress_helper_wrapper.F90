@@ -12,6 +12,12 @@ interface
     subroutine stop_mpi_helper() bind(C, name='stop_mpi_helper')
         import
     end subroutine stop_mpi_helper
+    subroutine pause_mpi_helper() bind(C, name='pause_MPI_helper')
+        import
+    end subroutine pause_mpi_helper
+    subroutine unpause_mpi_helper() bind(C, name='unpause_MPI_helper')
+        import
+    end subroutine unpause_mpi_helper
 
     subroutine pt_reqset_register(count, array_of_requests, flags, gid, ierr) bind(C, name='pt_reqset_register_f')
 

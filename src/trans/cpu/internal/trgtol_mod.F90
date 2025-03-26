@@ -298,12 +298,14 @@ INTEGER(KIND=JPIM) :: IOFF,IOFF1,IOFFNS,IOFFEW,J1,J2, JNR
 INTEGER(KIND=JPIM) :: IFLDOFF(KF_FS)
 INTEGER(KIND=JPIM) :: IGPTROFF(NGPBLKS)
 
-REAL(KIND=JPHOOK) :: ZHOOK_HANDLE_BAR
+REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 !     ------------------------------------------------------------------
 
 !*       0.    Some initializations
 !              --------------------
+
+IF (LHOOK) CALL DR_HOOK('TRGTOL_COMM_SEND',0,ZHOOK_HANDLE)
 
 ITAG = MTAGGL
 
@@ -506,6 +508,7 @@ ENDIF
 
 CALL GSTATS(1805,1)
 
+call pause_mpi_helper
 
 ! Copy local contribution
 
@@ -592,6 +595,8 @@ IF(KSENDTOT(MYPROC) > 0 )THEN
   CALL GSTATS(1601,1)
 
 ENDIF
+
+call gstats(908,0)
 
 pcombufs = -2
 
@@ -681,7 +686,14 @@ DO INS=1,KNSEND
 ENDDO
 !$OMP END PARALLEL
 !print *,'Starting send request set ',send_id
+
+call gstats(908,1)
+
+call unpause_mpi_helper
+
+call gstats(907,0)
 CALL PT_REQSET_START(SEND_ID,STATUS)
+call gstats(907,1)
 if(STATUS .EQ. MPI_ERR_ARG) THEN
    PRINT *,'Error in pt_reqset, trgtol'
 endif
@@ -692,6 +704,8 @@ endif
 !      & KMP_TYPE=JP_NON_BLOCKING_STANDARD,KREQUEST=IREQ_SEND(INS), &
 !      & KTAG=ITAG,CDSTRING='TRGTOL_COMM: NON-BLOCKING ISEND' )
 !ENDDO
+
+IF (LHOOK) CALL DR_HOOK('TRGTOL_COMM_SEND',1,ZHOOK_HANDLE)
 
 END SUBROUTINE TRGTOL_COMM_SEND
 

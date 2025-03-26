@@ -30,13 +30,11 @@ int pt_reqset_testany(int gid, int *idx, MPI_Status *status);
  * Wait until all requests of the reqset have completed. Copy the status if requested.
  */
 int pt_reqset_wait(int gid, MPI_Status *statuses);
-void pt_reqset_wait_f(int* gid, int *ierr);  /* , int* statuses_f) */
 /**
  * Check if all the requests in the reqset have completed. If yes, set the flag to 1, unregister the reqset
  * and return the statuses if requested.
  */
 int pt_reqset_test(int gid, int* flag, MPI_Status* statuses);
-void pt_reqset_test_f(int* gid, int* flag, int *ierr) ;   /* , int* statuses_f)  */
 /**
  * Start the reqset corresponding to the provided gid.
  */
