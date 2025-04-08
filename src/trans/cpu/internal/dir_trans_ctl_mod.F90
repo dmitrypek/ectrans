@@ -302,21 +302,26 @@ IF (NPROMATR > 0) THEN
 !       do while (.not. THISBATCH%COMM_COMPLETE(IREQ_RECV(:,THISBATCH%NBLK)))
 
 !       enddo
+    if(luse_progress_thread) then
+
        print *,'waiting for request ',THISBATCH%RECV_ID(1)
-    if(.not. FIRST_PASS(JBLK)) THEN
-       call gstats(903,0)
-    ENDIF
+       if(.not. FIRST_PASS(JBLK)) THEN
+          call gstats(903,0)
+       ENDIF
        CALL PT_REQSET_WAIT(THISBATCH%RECV_ID(1))
-  call gstats(903,1)
-!  call gstats(904,0)
+       if(.not. FIRST_PASS(JBLK)) THEN
+          call gstats(903,1)
+       endif
+       !  call gstats(904,0)
        CALL PT_REQSET_WAIT(THISBATCH%SEND_ID(1))
-!  call gstats(904,1)
+       !  call gstats(904,1)
+    endif
+    call gstats(906,0)
 
-     call gstats(906,0)
-
-       CALL TRGTOL_COMM_RECV(BIN(:,THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1), ZCOMBUFR, &
-     & THISBATCH%MYOFFRECV,THISBATCH%NF_FS, THISBATCH%NRECVCOUNT, KNRECV, THISBATCH%NRECVTOT, KRECV, &
-     &                 KINDEX, KNDOFF)
+    CALL TRGTOL_COMM_RECV(BIN(:,THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1), ZCOMBUFR, &
+     & THISBATCH%MYOFFRECV,THISBATCH%NF_FS, THISBATCH%NRECVCOUNT, KNSEND,KNRECV, THISBATCH%NRECVTOT, KRECV, &
+     &                 KINDEX, KNDOFF,THISBATCH%IREQ_SEND,THISBATCH%IREQ_RECV)
+    
      call gstats(906,1)
 
  END SELECT
@@ -369,33 +374,37 @@ SUBROUTINE ACTIVATE(N, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, PGP, IOFF
   ! Add a new batch to the list
   call gstats(902,0)
   CALL ACTIVE_BATCHES%APPEND(BATCH(N, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, IOFFSEND, &
-       &                     IOFFRECV, IOFFGTF, IOFFGP, SENDCNTMAX, RECVCNTMAX, NPTRGP,NPTRSPUV,NPTRSPSC))
+       &                     IOFFRECV, IOFFGTF, IOFFGP, SENDCNTMAX, RECVCNTMAX, NPTRGP,NPTRSPUV,NPTRSPSC, &
+       &                     IREQ_SEND(:,N),IREQ_RECV(:,N)))
   call gstats(902,1)
 
      SELECT TYPE (NEW_BATCH => ACTIVE_BATCHES%TAIL%VALUE)
   TYPE IS (BATCH)
+
      IF(FIRST_PASS(N)) THEN
-        CALL NEW_BATCH%INIT_RECVS(ZCOMBUFR,IREQ_RECV(:,N),RECV_ID(N))
-        CALL NEW_BATCH%INIT_SENDS(ZCOMBUFS,IREQ_SEND(:,N),SEND_ID(:,N))
-!        IF(STATUS .EQ. MPI_ERR_ARG) THEN
-!           PRINT *,'ERROR IN STATUS, SENDS IN ACTIVATE'
-!        ENDIF
+        CALL NEW_BATCH%INIT_RECVS(ZCOMBUFR,RECV_ID(N))
+        CALL NEW_BATCH%INIT_SENDS(ZCOMBUFS,SEND_ID(:,N))
+        !        IF(STATUS .EQ. MPI_ERR_ARG) THEN
+        !           PRINT *,'ERROR IN STATUS, SENDS IN ACTIVATE'
+        !        ENDIF
         FIRST_PASS(N) = .FALSE.
      ENDIF
-     NEW_BATCH%RECV_ID(1) = RECV_ID(N)
-     NEW_BATCH%RECV_ID(2) = SEND_ID(2,N)
-     NEW_BATCH%SEND_ID(1) = SEND_ID(1,N)
-     NEW_BATCH%SEND_ID(2) = SEND_ID(2,N)
-     print *,'Starting receive request set ',NEW_BATCH%RECV_ID(1)
-     call gstats(904,0)
-     CALL PT_REQSET_START(NEW_BATCH%RECV_ID(1),STATUS)
-     call gstats(904,1)
-     IF(STATUS .EQ. MPI_ERR_ARG) THEN
-        PRINT *,'ERROR IN STATUS, RECVS IN ACTIVATE'
-     ENDIF
+     if(luse_progress_thread) then
+        NEW_BATCH%RECV_ID(1) = RECV_ID(N)
+        NEW_BATCH%RECV_ID(2) = SEND_ID(2,N)
+        NEW_BATCH%SEND_ID(1) = SEND_ID(1,N)
+        NEW_BATCH%SEND_ID(2) = SEND_ID(2,N)
+        print *,'Starting receive request set ',NEW_BATCH%RECV_ID(1)
+        call gstats(904,0)
+        CALL PT_REQSET_START(NEW_BATCH%RECV_ID(1),STATUS)
+        call gstats(904,1)
+        IF(STATUS .EQ. MPI_ERR_ARG) THEN
+           PRINT *,'ERROR IN STATUS, RECVS IN ACTIVATE'
+        ENDIF
+     endif
 !     IF (NCOMM_STARTED(1) < MAX_COMM(1)) THEN
      call gstats(905,0)
-     CALL NEW_BATCH%START_COMM(PGP,ZCOMBUFS,BIN)
+     CALL NEW_BATCH%START_COMM(PGP,ZCOMBUFS,ZCOMBUFR,BIN)
      call gstats(905,1)
      !      NCOMM_STARTED(1) = NCOMM_STARTED(1) + 1
 !      LAST_SUBMITTED(1) = LAST_SUBMITTED(1) + 1

@@ -30,7 +30,7 @@ use yomgstats, only: jpmaxstat, gstats_lstats => lstats
 use yomhook, only : jphook, dr_hook, dr_hook_init
 use timing_mod, only: get_time, tcomm1, tcomm2, tcomm3, tcomp1, tcomp2, tcount, t_event, t_batch, &
   &                   t_stage, t_type
-!use progress_thread
+use progress_thread
 use mpi, only : MPI_DOUBLE_PRECISION,MPI_COMM_WORLD,mpi_barrier
 
 implicit none
@@ -131,7 +131,7 @@ integer(kind=jpim) :: nprnt_stats = 1
 
 logical :: lprint_norms = .false. ! Calculate and print spectral norms
 logical :: lmeminfo = .false. ! Show information from FIAT routine ec_meminfo at the end
-logical :: luse_progress_thread = .false.
+!logical :: luse_progress_thread = .false.
 
 ! The multiplier of the machine epsilon used as a tolerance for correctness checking
 ! ncheck = 0 (the default) means that correctness checking is disabled
@@ -185,12 +185,12 @@ real(jprd) :: t0
 integer :: num_batches
 real(8), allocatable :: t_comm(:,:,:),t_comp(:,:,:),gt_comm(:,:,:,:),gt_comp(:,:,:,:)
 
-interface
-subroutine start_MPI_helper() bind(C, name="start_MPI_helper")
-end subroutine
-subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper")
-end subroutine
-end interface
+!interface
+!subroutine start_MPI_helper() bind(C, name="start_MPI_helper")
+!end subroutine
+!subroutine stop_MPI_helper() bind(C, name="stop_MPI_helper")
+!end subroutine
+!end interface
 
 !===================================================================================================
 
@@ -205,6 +205,8 @@ end interface
 #include "ec_meminfo.intfb.h"
 
 !===================================================================================================
+
+luse_progress_thread = .false.
 
 luse_mpi = detect_mpirun()
 
