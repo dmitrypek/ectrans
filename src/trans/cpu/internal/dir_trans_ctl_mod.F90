@@ -8,10 +8,13 @@
 ! nor does it submit to any jurisdiction.
 !
 
+! #define DEBUG
+
 MODULE DIR_TRANS_CTL_MOD
 
 USE PARKIND1,          ONLY: JPIM, JPRB
 USE OVERLAP_TYPES_MOD, ONLY: BATCH, BATCHLIST, STAT_WAITING, STAT_PENDING, ACTIVE_BATCHES
+USE TPM_DISTR       ,ONLY : MYPROC
 USE PROGRESS_THREAD
 use mpi
 
@@ -29,6 +32,7 @@ INTEGER :: NCOMM_STARTED(2)
 INTEGER :: LAST_SUBMITTED(2)
 INTEGER, ALLOCATABLE :: RECV_ID(:),SEND_ID(:,:)
 INTEGER(KIND=JPIM), ALLOCATABLE :: NPTRGP(:),NPTRSPUV(:),NPTRSPSC(:)
+LOGICAL FIRST_TIME
 
 CONTAINS
 SUBROUTINE DIR_TRANS_CTL(KF_UV_G,KF_SCALARS_G,KF_GP,KF_FS,KF_UV,KF_SCALARS,&
@@ -97,6 +101,7 @@ USE TRGTOL_MOD,      ONLY: TRGTOL_PROLOG
 USE LTDIR_CTL_MOD, ONLY: LTDIR_CTL
 USE TRGTOL_MOD,    ONLY: TRGTOL_COMM_RECV
 USE FTDIR_CTL_MOD, ONLY: FTDIR_CTL_COMP
+USE FOURIER_OUT_MOD, ONLY: FOURIER_OUT
 USE PROGRESS_THREAD
 
 IMPLICIT NONE
@@ -136,10 +141,11 @@ INTEGER(KIND=JPIM) :: IVSET(KF_GP)
 INTEGER(KIND=JPIM) :: KINDEX(D%NLENGTF)  
 TYPE(LINKEDLISTNODE), POINTER :: IB
 INTEGER(KIND=JPIM)  :: IOFFSEND, IOFFRECV, IOFFGTF, IOFFGP
-INTEGER(KIND=JPIM) :: IST,NACTIVE,IBLEN
+INTEGER(KIND=JPIM) :: IST,NACTIVE,IBLEN,IEN
 LOGICAL :: PRODUCTIVE, COMM_COMPL
 INTEGER(KIND=JPIM) :: KSENDCOUNT_GLOB
-INTEGER I,JFLD
+INTEGER I,K,JGL
+character(len=25) :: s1,s2,s3,str
 
 !     ------------------------------------------------------------------
 
@@ -174,8 +180,6 @@ IF (NPROMATR > 0) THEN
     ALLOCATE(BGTF(KF_FS,D%NLENGTF))
     ALLOCATE(BIN(D%NLENGTF,KF_FS))
   ENDIF
-
-  print *,'NLENGTF=',D%NLENGTF
 
   ALLOCATE(KSENDTOT(NPROC))
   ALLOCATE(KRECVTOT(NPROC))
@@ -237,6 +241,7 @@ IF (NPROMATR > 0) THEN
      DO I=1,IBLKS
         FIRST_PASS(I) = .TRUE.
      ENDDO
+     first_time = .true.
   ENDIF
   
   IBLEN = D%NLENGT0B*2*KF_FS
@@ -324,7 +329,14 @@ IF (NPROMATR > 0) THEN
     
      call gstats(906,1)
 
- END SELECT
+     IST = 1+D%NLENGT0B*2*(THISBATCH%IOFFGTF-1)
+     IEN = IST + D%NLENGT0B*2*THISBATCH%NF_FS-1
+
+     CALL FTDIR_CTL_COMP(BIN(:,THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1), &
+          &  BGTF(THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1,:), &
+          &  THISBATCH%NF_FS)
+
+  END SELECT
 
 !    CALL ACTIVE_BATCHES%REMOVE(IB)
     
@@ -336,14 +348,73 @@ ELSE
   CALL ABORT_TRANS("DIR_TRANS_CTL: NPROMATR = 0 feature disabled for overlap version")
 
 ENDIF
+
+
+
 !call gstats(901,1)
 
 !    CALL TRGTOL_COMM_RECV(BIN, ZCOMBUFR, 1, &
 !         &                 KF_FS, KRECVCOUNT, KNRECV, KRECVTOT, KRECV, &
 !     &                 KINDEX, KNDOFF)
 
-CALL FTDIR_CTL_COMP(BIN,BGTF,FOUBUF_IN,KF_FS)
+!CALL FTDIR_CTL_COMP(BIN,BGTF,FOUBUF_IN,KF_FS)
 
+DO JGL = 1, D%NDGL_FS
+    ! Save Fourier data in FOUBUF_IN
+   CALL FOURIER_OUT(BGTF, FOUBUF_IN,KF_FS, JGL)
+ ENDDO
+
+ 
+     IF(FIRST_TIME) THEN
+
+#ifdef DEBUG
+s1 = 'bin'
+write(s2,9) iblks,jblk,myproc-1
+9 format(i0,'.',i0,'.',i0)
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+do k=1,kf_fs
+   do i=1,D%NLENGTF
+      write(11,10) i,k,bin(i,k)
+   enddo
+enddo
+
+10 format(i8,i8,F22.8)
+   close(11)
+#endif
+
+     
+#ifdef DEBUG
+s1 = 'bgtf'
+write(s2,9) iblks,jblk,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+do i=1,D%NLENGTF
+   do k=1,kf_fs
+      write(11,10) k,i,bgtf(k,i)
+   enddo
+enddo
+
+   close(11)
+
+s1 = 'foubuf_in'
+write(s2,9) iblks,jblk,myproc-1
+s3 = trim(s2)
+str = trim(s1) // s3
+open(11,file=str,form='formatted',status='unknown',action='write')
+do k=1,kf_fs * D%NLENGT0B*2
+   write(11,12) k,foubuf_in(k)
+   enddo
+
+12 format(i8,F22.8)
+   close(11)
+#endif
+
+endif
+
+FIRST_TIME = .FALSE.
 
 CALL LTDIR_CTL(1, KF_FS, KF_UV, KF_SCALARS, &
          &     PSPVOR=PSPVOR, PSPDIV=PSPDIV, PSPSCALAR=PSPSCALAR)
