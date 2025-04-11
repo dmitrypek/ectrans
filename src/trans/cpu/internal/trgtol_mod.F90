@@ -168,7 +168,7 @@ CALL GSTATS(1805,1)
 END SUBROUTINE TRGTOL_PROLOG
 
 SUBROUTINE TRGTOL_COMM_SEND(PGLAT,PCOMBUFS,PCOMBUFR,IOFFSEND,IOFFRECV,KREQ_SEND,KREQ_RECV,KF_FS,KF_GP,KF_SCALARS_G,KVSET,&
- & KSENDCOUNT,KRECVCOUNT,KNSEND,KNRECV,KSENDTOT,KRECVTOT,KSEND,KRECV,KINDEX,KNDOFF,SEND_ID,KGPTRSEND,&
+ & KSENDCOUNT,KRECVCOUNT,KNSEND,KNRECV,KSENDTOT,KRECVTOT,KSEND,KRECV,KINDEX,KNDOFF,SEND_ID,batch,KGPTRSEND,&
  & KPTRGP,PGP,PGPUV,PGP3A,PGP3B,PGP2)
 
 !**** *TRGTOL_COMM * - transposition of grid point data from column
@@ -266,6 +266,7 @@ REAL(KIND=JPRB), INTENT(INOUT) :: PCOMBUFS(:,:)
 REAL(KIND=JPRB), INTENT(INOUT) :: PCOMBUFR(:,:)
 INTEGER(KIND=JPIM), INTENT(IN) :: IOFFSEND
 INTEGER(KIND=JPIM), INTENT(IN) :: IOFFRECV
+INTEGER(KIND=JPIM), INTENT(IN) :: BATCH
 INTEGER(KIND=JPIM), INTENT(INOUT) :: KREQ_SEND(:)
 INTEGER(KIND=JPIM), INTENT(INOUT) :: KREQ_RECV(:)
 INTEGER(KIND=JPIM) ,OPTIONAL, INTENT(IN) :: KPTRGP(:)
@@ -309,7 +310,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('TRGTOL_COMM_SEND',0,ZHOOK_HANDLE)
 
-ITAG = MTAGGL
+ITAG = MTAGGL+BATCH
 
 !IF(.NOT.LGPNORM)THEN
 !   CALL GSTATS(803,0)
@@ -515,9 +516,9 @@ ENDIF
 
 CALL GSTATS(1805,1)
 
-if(luse_progress_thread) then
-   call pause_mpi_helper
-endif
+!if(luse_progress_thread) then
+!   call pause_mpi_helper
+!endif
 
 ! Copy local contribution
 
@@ -607,7 +608,6 @@ ENDIF
 
 call gstats(908,0)
 
-pcombufs = -2
 
 ! Now overlapping buffer packing/unpacking with sends/waits
 ! Time as if all communications to avoid double accounting
@@ -699,7 +699,7 @@ ENDDO
 call gstats(908,1)
 
 if(luse_progress_thread) then
-   call unpause_mpi_helper
+!   call unpause_mpi_helper
 
    call gstats(907,0)
    CALL PT_REQSET_START(SEND_ID,STATUS)

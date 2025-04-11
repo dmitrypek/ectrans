@@ -141,7 +141,7 @@ INTEGER(KIND=JPIM) :: IVSET(KF_GP)
 INTEGER(KIND=JPIM) :: KINDEX(D%NLENGTF)  
 TYPE(LINKEDLISTNODE), POINTER :: IB
 INTEGER(KIND=JPIM)  :: IOFFSEND, IOFFRECV, IOFFGTF, IOFFGP
-INTEGER(KIND=JPIM) :: IST,NACTIVE,IBLEN,IEN
+INTEGER(KIND=JPIM) :: IST,NACTIVE,IBLEN,IEN,OFFRECV
 LOGICAL :: PRODUCTIVE, COMM_COMPL
 INTEGER(KIND=JPIM) :: KSENDCOUNT_GLOB
 INTEGER I,K,JGL
@@ -282,26 +282,27 @@ IF (NPROMATR > 0) THEN
   NCOMM_STARTED(2) = 0 ! This keeps track of the batches in an active communication
   NACTIVE = 1 ! This keeps track of the overall number of active batches
   
-  bin = -1
-  
 !  print *,'krecvcount,krecvtot,kf_fs=',krecvcount,krecvtot,kf_fs
 !  call gstats(901,0)
-  DO JBLK =1,IBLKS
-    COMM_COMPL = .FALSE.
-    PRODUCTIVE = .FALSE.
+  CALL ACTIVATE(1, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, PGP, IOFFSEND, IOFFRECV, &
+    &           IOFFGTF, IOFFGP, KSENDCOUNT, KRECVCOUNT, NPTRGP,NPTRSPUV,NPTRSPSC)
+  IB => ACTIVE_BATCHES%HEAD
+
+    DO JBLK =2,IBLKS+1
 
 !    if(.not. FIRST_PASS(JBLK)) THEN
 !       call gstats(902,0)
-!    ENDIF
-    CALL ACTIVATE(JBLK, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, PGP, IOFFSEND, IOFFRECV, &
-    &           IOFFGTF, IOFFGP, KSENDCOUNT, KRECVCOUNT, NPTRGP,NPTRSPUV,NPTRSPSC)
+       !    ENDIF
+       IF(JBLK .LE. IBLKS) THEN
+          CALL ACTIVATE(JBLK, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, PGP, IOFFSEND, IOFFRECV, &
+               &           IOFFGTF, IOFFGP, KSENDCOUNT, KRECVCOUNT, NPTRGP,NPTRSPUV,NPTRSPSC)
+       ENDIF
 !    if(.not. FIRST_PASS(JBLK)) THEN
 !       call gstats(902,1)
 !    ENDIF
 !    print *,'Processing batch ',jblk,' ioffsend=',ioffsend
 
   ! Check whether any active batches have a completed communication
-    IB => ACTIVE_BATCHES%TAIL
    SELECT TYPE (THISBATCH => IB%VALUE)
     TYPE IS (BATCH)
 !       do while (.not. THISBATCH%COMM_COMPLETE(IREQ_RECV(:,THISBATCH%NBLK)))
@@ -310,22 +311,23 @@ IF (NPROMATR > 0) THEN
     if(luse_progress_thread) then
 
        print *,'waiting for request ',THISBATCH%RECV_ID(1)
-       if(.not. FIRST_PASS(JBLK)) THEN
+!       if(.not. FIRST_PASS(JBLK)) THEN
           call gstats(903,0)
-       ENDIF
+!       ENDIF
        CALL PT_REQSET_WAIT(THISBATCH%RECV_ID(1))
-       if(.not. FIRST_PASS(JBLK)) THEN
+!       if(.not. FIRST_PASS(JBLK)) THEN
           call gstats(903,1)
-       endif
-       !  call gstats(904,0)
-       CALL PT_REQSET_WAIT(THISBATCH%SEND_ID(1))
-       !  call gstats(904,1)
+!       endif
     endif
     call gstats(906,0)
 
-    CALL TRGTOL_COMM_RECV(BIN(:,THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1), ZCOMBUFR, &
-     & THISBATCH%MYOFFRECV,THISBATCH%NF_FS, THISBATCH%NRECVCOUNT, KNSEND,KNRECV, THISBATCH%NRECVTOT, KRECV, &
-     &                 KINDEX, KNDOFF,THISBATCH%IREQ_SEND,THISBATCH%IREQ_RECV)
+    IST = THISBATCH%IOFFGTF
+    IEN = THISBATCH%IOFFGTF+THISBATCH%NF_FS-1
+    OFFRECV = THISBATCH%MYOFFRECV
+    CALL TRGTOL_COMM_RECV(BIN(:,IST:IEN), ZCOMBUFR, &
+         & OFFRECV,THISBATCH%NF_FS, THISBATCH%NRECVCOUNT, THISBATCH%NNSEND,THISBATCH%NNRECV, &
+         & THISBATCH%NRECVTOT, THISBATCH%NRECV, &
+     &                 THISBATCH%NINDEX, THISBATCH%NNDOFF,THISBATCH%IREQ_SEND,THISBATCH%IREQ_RECV)
     
      call gstats(906,1)
 
@@ -336,6 +338,14 @@ IF (NPROMATR > 0) THEN
           &  BGTF(THISBATCH%IOFFGTF:THISBATCH%IOFFGTF+THISBATCH%NF_FS-1,:), &
           &  THISBATCH%NF_FS)
 
+    if(luse_progress_thread) then
+       !  call gstats(904,0)
+       CALL PT_REQSET_WAIT(THISBATCH%SEND_ID(1))
+       !  call gstats(904,1)
+    endif
+       !   call ACTIVE_BATCHES%REMOVE(IB)
+     IB => IB%NEXT
+     
   END SELECT
 
 !    CALL ACTIVE_BATCHES%REMOVE(IB)

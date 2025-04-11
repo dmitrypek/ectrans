@@ -334,7 +334,7 @@ CONTAINS
 !          &                   THIS%NF_SCALARS_G, THIS%NVSET_G(THIS%IOFFGP:THIS%IOFFGP + THIS%NF_GP-1), &
           &                   THIS%NSENDCOUNT, THIS%NRECVCOUNT, &
           &                   THIS%NNSEND, THIS%NNRECV, THIS%NSENDTOT, THIS%NRECVTOT, THIS%NSEND, &
-          &                   THIS%NRECV, THIS%NINDEX, THIS%NNDOFF, THIS%SEND_ID(1),THIS%NGPTRSEND, &
+          &                   THIS%NRECV, THIS%NINDEX, THIS%NNDOFF, THIS%SEND_ID(1),THIS%NBLK,THIS%NGPTRSEND, &
           &                   THIS%NPTRGP, PGP=PGP)
 !          &                   THIS%NPTRGP(THIS%IOFFGP:THIS%IOFFGP + THIS%NF_GP-1), PGP=PGP)
 
