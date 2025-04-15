@@ -71,7 +71,7 @@ CONTAINS
 
   FUNCTION BATCH_CONSTRUCTOR(KBLK, KF_GP, KF_SCALARS_G, KF_UV_G, KVSETUV, KVSETSC, IOFFSEND, &
        &                        IOFFRECV, IOFFGTF, IOFFGP, SENDCNTMAX, RECVCNTMAX, &
-       &                        NPTRGP,NPTRSPUV,NPTRSPSC,IREQ_SEND,IREQ_RECV) RESULT(THIS)
+       &                        IREQ_SEND,IREQ_RECV) RESULT(THIS)
     USE SHUFFLE_MOD,     ONLY: SHUFFLE
     USE FIELD_SPLIT_MOD, ONLY: FIELD_SPLIT
     USE TPM_GEN,         ONLY: NPROMATR, NOUT
@@ -94,7 +94,7 @@ CONTAINS
     INTEGER(KIND=JPIM),           INTENT(INOUT) :: IOFFGP
     INTEGER(KIND=JPIM),           INTENT(IN)    :: SENDCNTMAX
     INTEGER(KIND=JPIM),           INTENT(IN)    :: RECVCNTMAX
-  INTEGER(KIND=JPIM),           INTENT(INOUT)    :: NPTRGP(:),NPTRSPUV(:),NPTRSPSC(:)
+!  INTEGER(KIND=JPIM),           INTENT(INOUT)    :: NPTRSPUV(:),NPTRSPSC(:)   !NPTRGP(:),
     INTEGER(KIND=JPIM), TARGET,       INTENT(INOUT) :: IREQ_SEND(:),IREQ_RECV(:)
 
     INTEGER(KIND=JPIM) :: NSTUV_G
@@ -245,7 +245,7 @@ CONTAINS
                     &                 dest, MTAGGL + this%nblk, MPI_COMM_WORLD, THIS%IREQ_SEND(INS),IERR)
        ENDDO
        CALL PT_REQSET_REGISTER(NREQ,THIS%IREQ_SEND,FLG,SEND_ID(1),STATUS)
-       print *,'Registered send set ',send_id(1),', stage 1','myoffsend=',this%myoffsend
+!       print *,'Registered send set ',send_id(1),', stage 1','myoffsend=',this%myoffsend
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
@@ -261,7 +261,7 @@ CONTAINS
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_SENDS'
        ENDIF
-       print *,'Registered send set ',send_id(2),', stage 2'
+!       print *,'Registered send set ',send_id(2),', stage 2'
 !       THIS%RECV_ID(2) = THIS%SEND_ID(2)
 !    ENDIF
 
@@ -300,7 +300,7 @@ CONTAINS
        IF(STATUS .EQ. MPI_ERR_ARG) THEN
           PRINT *,'Error in pt_reqset, INIT_RECVS'
        ENDIF
-       print *,'Registered receive set ',recv_id, 'myoffrecv=',this%myoffrecv
+!       print *,'Registered receive set ',recv_id, 'myoffrecv=',this%myoffrecv
 !    ENDIF
 
 

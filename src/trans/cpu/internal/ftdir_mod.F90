@@ -81,7 +81,7 @@ ENDIF
 IST1=1
 IF (G%NLOEN(IGLG)==1) IST1=0
 DO JJ=IST1,ILEN
-  PREEL(1:KFIELDS,IST+D%NSTAGTF(KGL)+JJ-1) = 0.0_JPRB
+  PREEL(IST+D%NSTAGTF(KGL)+JJ-1,1:KFIELDS) = 0.0_JPRB
 ENDDO
 
 !     ------------------------------------------------------------------
