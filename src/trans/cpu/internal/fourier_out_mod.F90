@@ -68,7 +68,7 @@ DO JM = 0, G%NMEN(IGLG)
   II = 2 * JM + 2 + D%NSTAGTF(KGL)
 
   ! Compute offset for insertion of the fields in the l-to-m transposition buffer, FOUBUF_IN
-  ISTA = (D%NSTAGT1B(D%MSTABF(IPROC)) + D%NPNTGTB0(JM,KGL)) * 2 * KFIELDS + IOFF -1
+  ISTA = ((D%NSTAGT1B(D%MSTABF(IPROC)) + D%NPNTGTB0(JM,KGL)) * KFIELDS + IOFF -1 )*2
 
   ! Copy all fields from FFT work array to l-to-m transposition buffer
   DO JF = 1, KFIELDS_THIS
